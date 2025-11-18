@@ -1,0 +1,1060 @@
+[
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T15:00:00Z",
+        "local": "2025-11-17T22:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T16:00:00Z",
+        "local": "2025-11-17T23:00:00+07:00"
+      }
+    },
+    "value": 14.908249998092652,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T16:00:00Z",
+        "local": "2025-11-17T23:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T17:00:00Z",
+        "local": "2025-11-18T00:00:00+07:00"
+      }
+    },
+    "value": 15.283069433106315,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T17:00:00Z",
+        "local": "2025-11-18T00:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T18:00:00Z",
+        "local": "2025-11-18T01:00:00+07:00"
+      }
+    },
+    "value": 36.504291534423835,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T18:00:00Z",
+        "local": "2025-11-18T01:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T19:00:00Z",
+        "local": "2025-11-18T02:00:00+07:00"
+      }
+    },
+    "value": 62.95866648356121,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T19:00:00Z",
+        "local": "2025-11-18T02:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T20:00:00Z",
+        "local": "2025-11-18T03:00:00+07:00"
+      }
+    },
+    "value": 84.76933339436849,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T20:00:00Z",
+        "local": "2025-11-18T03:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T21:00:00Z",
+        "local": "2025-11-18T04:00:00+07:00"
+      }
+    },
+    "value": 105.97716700236003,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T21:00:00Z",
+        "local": "2025-11-18T04:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T22:00:00Z",
+        "local": "2025-11-18T05:00:00+07:00"
+      }
+    },
+    "value": 45.19133342107137,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T22:00:00Z",
+        "local": "2025-11-18T05:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T23:00:00Z",
+        "local": "2025-11-18T06:00:00+07:00"
+      }
+    },
+    "value": 28.783333460489903,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T23:00:00Z",
+        "local": "2025-11-18T06:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T00:00:00Z",
+        "local": "2025-11-18T07:00:00+07:00"
+      }
+    },
+    "value": 33.09749978383382,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T00:00:00Z",
+        "local": "2025-11-18T07:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T01:00:00Z",
+        "local": "2025-11-18T08:00:00+07:00"
+      }
+    },
+    "value": 36.06366682052612,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T01:00:00Z",
+        "local": "2025-11-18T08:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T02:00:00Z",
+        "local": "2025-11-18T09:00:00+07:00"
+      }
+    },
+    "value": 31.205833276112873,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T02:00:00Z",
+        "local": "2025-11-18T09:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T03:00:00Z",
+        "local": "2025-11-18T10:00:00+07:00"
+      }
+    },
+    "value": 34.32799987792969,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T03:00:00Z",
+        "local": "2025-11-18T10:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T04:00:00Z",
+        "local": "2025-11-18T11:00:00+07:00"
+      }
+    },
+    "value": 34.90250015258789,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T05:00:00Z",
+        "local": "2025-11-18T12:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T06:00:00Z",
+        "local": "2025-11-18T13:00:00+07:00"
+      }
+    },
+    "value": 47.494000244140615,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T06:00:00Z",
+        "local": "2025-11-18T13:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T07:00:00Z",
+        "local": "2025-11-18T14:00:00+07:00"
+      }
+    },
+    "value": 44.121666844685876,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T07:00:00Z",
+        "local": "2025-11-18T14:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T08:00:00Z",
+        "local": "2025-11-18T15:00:00+07:00"
+      }
+    },
+    "value": 58.760610877143016,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T08:00:00Z",
+        "local": "2025-11-18T15:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T09:00:00Z",
+        "local": "2025-11-18T16:00:00+07:00"
+      }
+    },
+    "value": 46.03899993896484,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T09:00:00Z",
+        "local": "2025-11-18T16:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T10:00:00Z",
+        "local": "2025-11-18T17:00:00+07:00"
+      }
+    },
+    "value": 16.358500003814697,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T10:00:00Z",
+        "local": "2025-11-18T17:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T11:00:00Z",
+        "local": "2025-11-18T18:00:00+07:00"
+      }
+    },
+    "value": 24.375666681925452,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T11:00:00Z",
+        "local": "2025-11-18T18:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T12:00:00Z",
+        "local": "2025-11-18T19:00:00+07:00"
+      }
+    },
+    "value": 30.566500091552737,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T12:00:00Z",
+        "local": "2025-11-18T19:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T13:00:00Z",
+        "local": "2025-11-18T20:00:00+07:00"
+      }
+    },
+    "value": 31.50583340326945,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T13:00:00Z",
+        "local": "2025-11-18T20:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T14:00:00Z",
+        "local": "2025-11-18T21:00:00+07:00"
+      }
+    },
+    "value": 26.38949998219808,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T14:00:00Z",
+        "local": "2025-11-18T21:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T15:00:00Z",
+        "local": "2025-11-18T22:00:00+07:00"
+      }
+    },
+    "value": 23.411333306630453,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.78533,
+      "longitude": 106.67029
+    },
+    "location": "CMT8"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T15:00:00Z",
+        "local": "2025-11-17T22:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T16:00:00Z",
+        "local": "2025-11-17T23:00:00+07:00"
+      }
+    },
+    "value": 11.385250012079874,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T16:00:00Z",
+        "local": "2025-11-17T23:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T17:00:00Z",
+        "local": "2025-11-18T00:00:00+07:00"
+      }
+    },
+    "value": 11.265999984741212,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T17:00:00Z",
+        "local": "2025-11-18T00:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T18:00:00Z",
+        "local": "2025-11-18T01:00:00+07:00"
+      }
+    },
+    "value": 45.00379145940145,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T18:00:00Z",
+        "local": "2025-11-18T01:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T19:00:00Z",
+        "local": "2025-11-18T02:00:00+07:00"
+      }
+    },
+    "value": 127.58650016784668,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T19:00:00Z",
+        "local": "2025-11-18T02:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T20:00:00Z",
+        "local": "2025-11-18T03:00:00+07:00"
+      }
+    },
+    "value": 110.05816675821939,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T20:00:00Z",
+        "local": "2025-11-18T03:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T21:00:00Z",
+        "local": "2025-11-18T04:00:00+07:00"
+      }
+    },
+    "value": 130.64851394229464,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T21:00:00Z",
+        "local": "2025-11-18T04:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T22:00:00Z",
+        "local": "2025-11-18T05:00:00+07:00"
+      }
+    },
+    "value": 41.789583460489915,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T22:00:00Z",
+        "local": "2025-11-18T05:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-17T23:00:00Z",
+        "local": "2025-11-18T06:00:00+07:00"
+      }
+    },
+    "value": 24.769277789857654,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-17T23:00:00Z",
+        "local": "2025-11-18T06:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T00:00:00Z",
+        "local": "2025-11-18T07:00:00+07:00"
+      }
+    },
+    "value": 27.039333311716717,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T00:00:00Z",
+        "local": "2025-11-18T07:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T01:00:00Z",
+        "local": "2025-11-18T08:00:00+07:00"
+      }
+    },
+    "value": 28.897333463033046,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T01:00:00Z",
+        "local": "2025-11-18T08:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T02:00:00Z",
+        "local": "2025-11-18T09:00:00+07:00"
+      }
+    },
+    "value": 24.367166678110753,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T02:00:00Z",
+        "local": "2025-11-18T09:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T03:00:00Z",
+        "local": "2025-11-18T10:00:00+07:00"
+      }
+    },
+    "value": 29.841999912261965,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T03:00:00Z",
+        "local": "2025-11-18T10:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T04:00:00Z",
+        "local": "2025-11-18T11:00:00+07:00"
+      }
+    },
+    "value": 28.900499788920083,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T05:00:00Z",
+        "local": "2025-11-18T12:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T06:00:00Z",
+        "local": "2025-11-18T13:00:00+07:00"
+      }
+    },
+    "value": 44.705333455403654,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T06:00:00Z",
+        "local": "2025-11-18T13:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T07:00:00Z",
+        "local": "2025-11-18T14:00:00+07:00"
+      }
+    },
+    "value": 30.739000034332275,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T07:00:00Z",
+        "local": "2025-11-18T14:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T08:00:00Z",
+        "local": "2025-11-18T15:00:00+07:00"
+      }
+    },
+    "value": 51.14120896657307,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T08:00:00Z",
+        "local": "2025-11-18T15:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T09:00:00Z",
+        "local": "2025-11-18T16:00:00+07:00"
+      }
+    },
+    "value": 40.91350008646647,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T09:00:00Z",
+        "local": "2025-11-18T16:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T10:00:00Z",
+        "local": "2025-11-18T17:00:00+07:00"
+      }
+    },
+    "value": 15.422333335876466,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T10:00:00Z",
+        "local": "2025-11-18T17:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T11:00:00Z",
+        "local": "2025-11-18T18:00:00+07:00"
+      }
+    },
+    "value": 22.79183333714803,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T11:00:00Z",
+        "local": "2025-11-18T18:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T12:00:00Z",
+        "local": "2025-11-18T19:00:00+07:00"
+      }
+    },
+    "value": 30.263833459218347,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T12:00:00Z",
+        "local": "2025-11-18T19:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T13:00:00Z",
+        "local": "2025-11-18T20:00:00+07:00"
+      }
+    },
+    "value": 30.716833106676734,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T13:00:00Z",
+        "local": "2025-11-18T20:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T14:00:00Z",
+        "local": "2025-11-18T21:00:00+07:00"
+      }
+    },
+    "value": 26.925166670481364,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  },
+  {
+    "period": {
+      "label": "raw",
+      "interval": "01:00:00",
+      "datetimeFrom": {
+        "utc": "2025-11-18T14:00:00Z",
+        "local": "2025-11-18T21:00:00+07:00"
+      },
+      "datetimeTo": {
+        "utc": "2025-11-18T15:00:00Z",
+        "local": "2025-11-18T22:00:00+07:00"
+      }
+    },
+    "value": 20.20816666285197,
+    "parameter": {
+      "name": "pm25"
+    },
+    "coordinates": {
+      "latitude": 10.774491,
+      "longitude": 106.661026
+    },
+    "location": "Care Centre"
+  }
+]

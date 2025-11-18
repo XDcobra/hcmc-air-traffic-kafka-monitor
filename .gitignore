@@ -1,0 +1,101 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.conda/
+
+# IDE - VSCode
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# IDE - Jupyter Notebook
+.ipynb_checkpoints
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Project specific - Generated data files
+# Note: data/ directory is committed to track generated outputs
+# Uncomment the following lines if you want to ignore data files:
+# data/
+# !data/.gitkeep
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+generate_traffic_data.py
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+site/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# UV lock file (optional - some teams commit it, others don't)
+# Uncomment if you want to ignore it:
+# uv.lock
+
