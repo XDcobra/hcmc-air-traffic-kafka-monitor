@@ -642,6 +642,15 @@ wheels = [
 ]
 
 [[package]]
+name = "kafka-python"
+version = "2.2.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/2d/5a1ed7d334fcfba1e54ce0c1365117cb54e11b96403cbd3f6c4f6069cd03/kafka_python-2.2.16.tar.gz", hash = "sha256:abbb2e5b9f7ecb85fd0caa7955ee6cbb1c8257021a94819cd63e0603e82c8dc1", size = 348032, upload-time = "2025-11-18T23:57:45.124Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/0b/4f9ed37e95eb8dd827b43b2e67099f122d2d7e969e2b3efed79e73af8fa8/kafka_python-2.2.16-py2.py3-none-any.whl", hash = "sha256:76de02eeff40488fc29f01c4cce16f123686b7dad1de3c86bc3459191c5408f1", size = 309866, upload-time = "2025-11-18T23:57:43.173Z" },
+]
+
+[[package]]
 name = "kiwisolver"
 version = "1.4.7"
 source = { registry = "https://pypi.org/simple" }
@@ -862,6 +871,7 @@ name = "lambda-architecture-hcmc"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "kafka-python" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "matplotlib", version = "3.10.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -888,6 +898,7 @@ dev = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0.0" },
+    { name = "kafka-python", specifier = ">=2.0.2" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "openaq", specifier = ">=0.4.0" },

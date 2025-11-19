@@ -1,6 +1,6 @@
 # Lambda Architecture Prototype for HCMC Smart City IoT Data
 
-A Python prototype implementing a Lambda Architecture for processing historical traffic data and real-time air quality measurements in Ho Chi Minh City (HCMC), Vietnam. This project demonstrates how batch and speed layers can be combined to identify critical periods with both high traffic congestion and poor air quality.
+A Python prototype implementing a Lambda Architecture for processing real-time traffic data and real-time air quality measurements in Ho Chi Minh City (HCMC), Vietnam. This project demonstrates how batch and speed layers can be combined to identify critical periods with both high traffic congestion and poor air quality.
 
 ## Project Overview
 
@@ -9,6 +9,10 @@ This project is part of a Master's course on "New Trends in ICT" and demonstrate
 - **Batch Layer**: Processing historical traffic flow data from HCMC
 - **Speed Layer**: Collecting near real-time air quality (PM2.5) data via OpenAQ API
 - **Serving Layer**: Combining both datasets to identify critical periods where traffic congestion and air pollution coincide
+
+<p align="center">
+  <img src="docs/architecture_overview.png" alt="Lambda Architecture Overview" width="50%" />
+</p>
 
 ### Use Case
 
@@ -58,6 +62,7 @@ Project/
 
 - Python 3.8 or higher
 - Package manager: `pip` (standard) or `uv` (recommended for faster installation)
+- Docker and Docker Compose (required for Kafka integration, optional otherwise)
 
 ### 2. Install Dependencies
 
@@ -110,6 +115,28 @@ The project now collects data directly from the APIs and focuses on **District 1
 
 Set the keys via environment variables or update `config.py` directly (not recommended for production).
 
+### 3.5. Kafka Setup (Optional)
+
+For Kafka integration, you need to start the Kafka infrastructure using Docker Compose:
+
+```bash
+# Start Kafka, Zookeeper, and Confluent Control Center
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# Access Confluent Control Center UI
+# Open http://localhost:9021 in your browser
+```
+
+**Stopping Kafka:**
+```bash
+docker-compose down
+```
+
+**Note:** Kafka integration is optional. The system works perfectly fine with JSON files (default behavior). Use `--use-kafka` flag only when you want to use Kafka topics.
+
 ### 4. Build Local Datasets
 
 Use the new **dataset** command to capture raw JSON datasets for analytics or offline runs:
@@ -125,12 +152,28 @@ python main.py dataset --use-api traffic --collector --interval 30 --duration 24
 python main.py dataset --use-api air --hours 12
 ```
 
-This command writes the following raw JSON files:
+This command writes the following raw JSON files (or Kafka topics if `--use-kafka` is used):
 
 - `data/raw/traffic_raw.json` – snapshots/collector output (raw TomTom responses with metadata)
 - `data/raw/air_raw.json` – latest PM2.5 measurements from OpenAQ
 
 These files become the default inputs for the batch and speed layers when `--use-api` is **not** provided. The processing steps convert the raw JSON into the CSV views used by the serving layer.
+
+### 4.5 Build Local Datasets using Kafka
+
+**Option A: Fetch from API and write to Kafka**
+```bash
+# Creates dataset from API into Kafka instead of JSON files
+python main.py dataset --use-api both --use-kafka
+```
+
+**Option B: Load existing JSON files into Kafka**
+```bash
+# Load existing JSON files into Kafka (no API calls)
+python main.py dataset --use-api air --use-kafka --from-file
+python main.py dataset --use-api traffic --use-kafka --from-file
+python main.py dataset --use-api both --use-kafka --from-file
+```
 
 > **Note:** Legacy CSV ingestion has been removed. Always refresh the JSON datasets with `python main.py dataset ...` before running the batch or speed layers in offline mode.
 
@@ -171,13 +214,41 @@ Skip dataset creation and reuse existing raw files:
 python main.py full --no-api
 ```
 
+**Using Kafka (requires Docker Compose):**
+
+```bash
+# Start Kafka first
+docker-compose up -d
+
+# Write datasets to Kafka and process from Kafka
+python main.py full --use-api both --use-kafka
+
+# Process from Kafka (skip dataset creation)
+python main.py full --no-api --use-kafka
+```
+
 #### 3. Run Individual Layers
 
-- **Batch layer:** `python main.py batch [--use-api] [--traffic-file path/to/traffic_raw.json]`
-- **Speed layer:** `python main.py speed [--use-api] [--air-file path/to/air_raw.json] [--continuous --interval 10]`
+- **Batch layer:** `python main.py batch [--use-api] [--use-kafka] [--traffic-file path/to/traffic_raw.json]`
+- **Speed layer:** `python main.py speed [--use-api] [--use-kafka] [--air-file path/to/air_raw.json] [--continuous --interval 10]`
 - **Serving layer:** `python main.py serving [--no-plots]`
 
-Without `--use-api`, the batch layer reads `data/raw/traffic_raw.json` and the speed layer reads `data/raw/air_raw.json`. Supplying `--use-api` fetches fresh data for that layer without modifying the raw files.
+**Data Source Priority:**
+- Without flags: Reads from JSON files (`data/raw/traffic_raw.json`, `data/raw/air_raw.json`)
+- With `--use-api`: Fetches fresh data from APIs
+- With `--use-kafka`: Reads from Kafka topics (requires Kafka running)
+
+**Kafka Examples:**
+```bash
+# Batch layer from Kafka
+python main.py batch --use-kafka
+
+# Speed layer from Kafka
+python main.py speed --use-kafka
+
+# Continuous speed layer from Kafka
+python main.py speed --use-kafka --continuous --interval 5
+```
 
 ### Programmatic Usage
 
@@ -222,6 +293,36 @@ After running the pipeline, you'll find the following outputs:
   - `scatter_plot.png`: Scatter plot of PM2.5 vs speed
   - `critical_periods_timeline.png`: Timeline visualization of critical periods
 
+## Visualizations
+
+The serving layer generates three types of visualizations to help analyze critical periods:
+
+### Time Series Plot
+
+![Time Series of Traffic Speed and Air Quality](data/serving_views/plots/time_series.png)
+
+The time series plot displays traffic speed and PM2.5 air quality measurements over time. Critical periods are highlighted with vertical red lines, showing when both conditions (low speed and high PM2.5) are met simultaneously.
+
+### Scatter Plot
+
+![PM2.5 vs Traffic Speed Scatter Plot](data/serving_views/plots/scatter_plot.png)
+
+The scatter plot shows the relationship between PM2.5 concentration and average traffic speed. The plot is divided into four regions by threshold lines:
+- **Critical Periods** (top-left, purple): High PM2.5 (>50 µg/m³) AND low speed (<20 km/h)
+- **High PM2.5, Normal Speed** (top-right, red): High PM2.5 but speed above threshold
+- **Low Speed, Good Air Quality** (bottom-left, blue): Low speed but PM2.5 below threshold
+- **Normal Conditions** (bottom-right): Both metrics within acceptable ranges
+
+### Critical Periods Timeline
+
+![Timeline of Critical Periods](data/serving_views/plots/critical_periods_timeline.png)
+
+The timeline visualization provides a detailed view of identified critical periods, showing:
+- Start times of each critical period
+- PM2.5 and speed values for each period
+- Severity index (color-coded gradient)
+- Summary statistics (total periods, average PM2.5, average speed)
+
 ## Configuration
 
 Key settings can be modified in `config.py`:
@@ -254,7 +355,7 @@ Key settings can be modified in `config.py`:
 
 `data/raw/air_raw.json` stores the measurement dictionaries returned by the OpenAQ SDK. The speed processor converts them into:
 
-- `timestamp`
+- `timestamp` (derived from `datetimeFrom.local` field for consistent hour assignment)
 - `location`
 - `pm25`
 - `latitude`
@@ -266,18 +367,103 @@ Key settings can be modified in `config.py`:
 
 1. **Batch Layer**
    - Processes historical traffic data offline
+   - Reads from Kafka topics (with `--use-kafka`) or JSON files (default)
    - Aggregates by hour (and optionally by road segment)
    - Generates batch views for long-term analysis
 
 2. **Speed Layer**
    - Collects near real-time air quality data
-   - Can poll OpenAQ directly or rebuild the speed view from the saved raw dataset
+   - Reads from Kafka topics (with `--use-kafka`), polls OpenAQ API, or loads from JSON files
    - Maintains a recent view of environmental conditions
 
 3. **Serving Layer**
    - Merges batch and speed views on timestamp
    - Identifies critical periods based on thresholds
    - Generates visualizations and summary statistics
+
+### Kafka Integration
+
+The system supports **optional Kafka integration** for a production-like Lambda Architecture:
+
+- **Immutable Data Stream**: All incoming data is written to Kafka topics (`traffic-raw`, `air-quality-raw`)
+- **Batch Layer**: Reads from Kafka using consumer group `lambda-batch-consumer`
+- **Speed Layer**: Reads from Kafka using consumer group `lambda-speed-consumer`
+- **Backward Compatible**: Without `--use-kafka`, the system works with JSON files (default behavior)
+
+**Benefits:**
+- True Lambda Architecture pattern (immutable data stream)
+- Scalable and production-ready
+- Visual monitoring via Confluent Control Center UI
+- Consumer group management for parallel processing
+
+### Architecture Diagram
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│   TomTom API    │         │   OpenAQ API    │
+│  (Traffic Data) │         │ (Air Quality)   │
+└────────┬────────┘         └────────┬────────┘
+         │                            │
+         │                            │
+         ▼                            ▼
+┌─────────────────────────────────────────────┐
+│         Dataset Builder                     │
+│  (Fetches & Writes to Kafka or JSON)       │
+└────────┬────────────────────────────────────┘
+         │
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│              Kafka Topics                     │
+│  ┌──────────────┐    ┌──────────────┐      │
+│  │ traffic-raw  │    │air-quality-raw│     │
+│  └──────────────┘    └──────────────┘      │
+│         │                    │              │
+│         │                    │              │
+│         └────────┬───────────┘              │
+│                  │                          │
+│         ┌────────▼──────────┐               │
+│         │ Confluent Control │               │
+│         │   Center (UI)     │               │
+│         │  localhost:9021   │               │
+│         └───────────────────┘               │
+└─────────────────────────────────────────────┘
+         │                    │
+         │                    │
+         ▼                    ▼
+┌─────────────────┐    ┌─────────────────┐
+│  Batch Layer    │    │  Speed Layer     │
+│  (Consumer)     │    │  (Consumer)     │
+│                 │    │                 │
+│ - Aggregates    │    │ - Real-time     │
+│   by hour       │    │   processing    │
+│ - Historical    │    │ - Recent data   │
+│   analysis      │    │                 │
+└────────┬────────┘    └────────┬────────┘
+         │                       │
+         │                       │
+         └───────────┬───────────┘
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │   Serving Layer       │
+         │                       │
+         │ - Merges batch + speed│
+         │ - Identifies critical │
+         │   periods             │
+         │ - Generates plots     │
+         └───────────────────────┘
+```
+
+**Data Flow:**
+1. **Data Sources**: TomTom API (traffic) and OpenAQ API (air quality)
+2. **Dataset Builder**: Fetches data and writes to Kafka topics (with `--use-kafka`) or JSON files (default)
+3. **Kafka Topics**: Immutable data stream (`traffic-raw`, `air-quality-raw`)
+4. **Batch Layer**: Reads from Kafka/JSON, processes historical data, creates hourly aggregations
+5. **Speed Layer**: Reads from Kafka/JSON, processes recent data in near real-time
+6. **Serving Layer**: Combines both views to identify critical periods
+
+**Confluent Control Center**: Web UI at http://localhost:9021 for monitoring topics, messages, and consumer groups.
 
 ### Conceptual Edge/Fog/Cloud Architecture
 
@@ -311,6 +497,13 @@ While the implementation runs on a single machine, the design conceptually maps 
 - Ensure all dependencies are installed: `pip install -r requirements.txt`
 - Check that you're running from the project root directory
 
+**5. Kafka connection errors**
+- Ensure Kafka is running: `docker-compose ps`
+- Start Kafka if needed: `docker-compose up -d`
+- Check Kafka is accessible: `docker-compose logs broker`
+- Verify Control Center UI is accessible: http://localhost:9021
+- If using custom Kafka servers, set `KAFKA_BOOTSTRAP_SERVERS` environment variable
+
 ## Evaluation and Analysis
 
 The project evaluation focuses on:
@@ -320,11 +513,63 @@ The project evaluation focuses on:
 3. **Complexity**: Trade-offs between Lambda Architecture vs. pure batch or pure streaming
 4. **Usefulness**: Whether combining traffic and air quality data provides actionable insights
 
+## Kafka Integration
+
+### Overview
+
+The system supports optional Kafka integration for a production-ready Lambda Architecture. Kafka provides an immutable data stream that both batch and speed layers can read from independently.
+
+### Quick Start with Kafka
+
+1. **Start Kafka infrastructure:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Write datasets to Kafka:**
+   ```bash
+   python main.py dataset --use-api both --use-kafka
+   ```
+
+3. **Process pipeline from Kafka:**
+   ```bash
+   python main.py full --use-kafka --no-api
+   ```
+
+4. **Monitor in Control Center UI:**
+   - Open http://localhost:9021
+   - View topics: `traffic-raw`, `air-quality-raw`
+   - Monitor consumer groups: `lambda-batch-consumer`, `lambda-speed-consumer`
+
+### Kafka Topics
+
+- **`traffic-raw`**: Raw traffic data from TomTom API
+- **`air-quality-raw`**: Raw air quality measurements from OpenAQ
+
+### Consumer Groups
+
+- **`lambda-batch-consumer`**: Batch layer reads from Kafka using this consumer group
+- **`lambda-speed-consumer`**: Speed layer reads from Kafka using this consumer group
+
+### Configuration
+
+Kafka settings can be configured via environment variables or `config.py`:
+
+- `KAFKA_BOOTSTRAP_SERVERS` (default: `localhost:9092`)
+- `KAFKA_TRAFFIC_TOPIC` (default: `traffic-raw`)
+- `KAFKA_AIR_QUALITY_TOPIC` (default: `air-quality-raw`)
+- `KAFKA_BATCH_CONSUMER_GROUP` (default: `lambda-batch-consumer`)
+- `KAFKA_SPEED_CONSUMER_GROUP` (default: `lambda-speed-consumer`)
+
+### Backward Compatibility
+
+**Important:** The system is fully backward compatible. Without the `--use-kafka` flag, everything works exactly as before with JSON files. Kafka is completely optional.
+
 ## Future Enhancements
 
 Potential improvements for a production system:
 
-- Real-time streaming with Kafka/Spark Streaming
+- Real-time streaming with Spark Streaming (reading from Kafka)
 - Distributed batch processing with Spark/Hadoop
 - Machine learning models for prediction
 - Real-time dashboard with web interface
@@ -339,7 +584,6 @@ This project is created for academic purposes as part of a Master's course assig
 
 - **OpenAQ API**: https://openaq.org/
 - **Lambda Architecture**: Nathan Marz and James Warren, "Big Data: Principles and best practices of scalable real-time data systems"
-- **Kaggle Dataset**: "Traffic Flow Data in Ho Chi Minh City, Viet Nam" (search on Kaggle)
 
 ## Contact
 

@@ -45,16 +45,18 @@ def run_batch_layer(args):
     logger.info("="*60)
     
     try:
-        # Check if API should be used for traffic data
+        # Check if API or Kafka should be used for traffic data
         use_traffic_api = getattr(args, 'use_api', False)
+        use_kafka = getattr(args, 'use_kafka', False)
         
-        # If using API, don't pass traffic_file (it will be ignored anyway)
-        traffic_file = None if use_traffic_api else _resolve_traffic_file(getattr(args, 'traffic_file', None))
+        # If using API or Kafka, don't pass traffic_file (it will be ignored anyway)
+        traffic_file = None if (use_traffic_api or use_kafka) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
 
         batch_df = run_batch_processing(
             traffic_file=traffic_file,
             output_file=getattr(args, 'output_file', None),
-            use_api=use_traffic_api
+            use_api=use_traffic_api,
+            use_kafka=use_kafka
         )
         logger.info("Batch layer completed successfully")
         return 0
@@ -70,27 +72,30 @@ def run_speed_layer(args):
     logger.info("="*60)
     
     try:
-        # Check if API should be used for air quality data
+        # Check if API or Kafka should be used for air quality data
         use_air_api = getattr(args, 'use_api', False)
+        use_kafka = getattr(args, 'use_kafka', False)
         
-        # If using API, don't pass dataset_file (it will be ignored)
-        dataset_air_file = None if use_air_api else _resolve_air_dataset_file(getattr(args, "air_file", None))
+        # If using API or Kafka, don't pass dataset_file (it will be ignored)
+        dataset_air_file = None if (use_air_api or use_kafka) else _resolve_air_dataset_file(getattr(args, "air_file", None))
 
         if getattr(args, 'continuous', False):
-            if not use_air_api:
-                logger.error("Continuous mode requires API usage for air quality data.")
+            if not use_air_api and not use_kafka:
+                logger.error("Continuous mode requires API or Kafka usage for air quality data.")
                 return 1
             logger.info("Running in continuous mode...")
             collect_air_quality_continuous(
                 interval_minutes=getattr(args, 'interval', 5),
                 max_iterations=getattr(args, 'max_iterations', None),
-                use_api=use_air_api
+                use_api=use_air_api,
+                use_kafka=use_kafka
             )
         else:
             logger.info("Running one-time collection...")
             df = collect_air_quality_once(
                 use_api=use_air_api,
                 dataset_file=dataset_air_file,
+                use_kafka=use_kafka
             )
             if not df.empty:
                 logger.info(f"Collected {len(df)} air quality measurements")
@@ -138,12 +143,14 @@ def run_full_pipeline(args):
     # Check for --no-api flag
     no_api = getattr(args, 'no_api', False)
     
-    # Extract API mode for dataset creation and layer processing
+    # Extract API mode and Kafka flag for dataset creation and layer processing
     api_mode = getattr(args, 'use_api', 'none')
+    use_kafka = getattr(args, 'use_kafka', False)
     use_traffic_api_for_layers = api_mode in ["both", "traffic"]
     use_air_api_for_layers = api_mode in ["both", "air"]
     
     logger.info(f"API usage mode: {api_mode} (traffic={use_traffic_api_for_layers}, air={use_air_api_for_layers})")
+    logger.info(f"Kafka usage: {use_kafka}")
     logger.info(f"--no-api flag: {no_api}")
     
     # Step 0: Dataset creation (skip if --no-api)
@@ -152,9 +159,9 @@ def run_full_pipeline(args):
         try:
             # Create both datasets by default (dataset command always uses API)
             if api_mode in ["both", "traffic"]:
-                build_traffic_snapshot()
+                build_traffic_snapshot(use_kafka=use_kafka)
             if api_mode in ["both", "air"]:
-                build_air_dataset(hours=24)
+                build_air_dataset(hours=24, use_kafka=use_kafka)
         except Exception as e:
             logger.error(f"Dataset creation failed: {e}", exc_info=True)
             exit_code = 1
@@ -162,14 +169,14 @@ def run_full_pipeline(args):
     else:
         logger.info("\n[0/4] Skipping dataset creation (--no-api flag set)")
     
-    # Determine default input files when not using APIs for layers
-    traffic_input = None if use_traffic_api_for_layers else _resolve_traffic_file(getattr(args, 'traffic_file', None))
-    air_input = None if use_air_api_for_layers else _resolve_air_dataset_file(getattr(args, "air_file", None))
+    # Determine default input files when not using APIs or Kafka for layers
+    traffic_input = None if (use_traffic_api_for_layers or use_kafka) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
+    air_input = None if (use_air_api_for_layers or use_kafka) else _resolve_air_dataset_file(getattr(args, "air_file", None))
 
     # Step 1: Batch layer
     logger.info("\n[1/4] Processing batch layer...")
     try:
-        run_batch_processing(traffic_file=traffic_input, use_api=use_traffic_api_for_layers)
+        run_batch_processing(traffic_file=traffic_input, use_api=use_traffic_api_for_layers, use_kafka=use_kafka)
     except Exception as e:
         logger.error(f"Batch layer failed: {e}", exc_info=True)
         exit_code = 1
@@ -181,6 +188,7 @@ def run_full_pipeline(args):
         collect_air_quality_once(
             use_api=use_air_api_for_layers,
             dataset_file=air_input,
+            use_kafka=use_kafka
         )
     except Exception as e:
         logger.warning(f"Speed layer collection failed: {e}. Continuing with existing data if available.")
@@ -229,21 +237,42 @@ def run_dataset_builder(args):
         return 1
 
     worked = False
+    use_kafka = getattr(args, 'use_kafka', False)
+    from_file = getattr(args, 'from_file', False)
+    
+    # Validate --from-file usage
+    if from_file and not use_kafka:
+        logger.error("--from-file requires --use-kafka flag")
+        return 1
+    
+    if from_file and args.collector:
+        logger.error("--from-file cannot be used with --collector (collector requires API)")
+        return 1
 
     if args.use_api in ("traffic", "both"):
         worked = True
-        if args.collector:
+        if from_file:
+            # Load from JSON file and write to Kafka
+            from dataset_builder import load_traffic_from_json_to_kafka
+            load_traffic_from_json_to_kafka()
+        elif args.collector:
             run_traffic_collector(
                 interval_minutes=args.interval,
                 duration_hours=args.duration,
+                use_kafka=use_kafka,
             )
         else:
             # default or --current -> snapshot that overwrites file
-            build_traffic_snapshot()
+            build_traffic_snapshot(use_kafka=use_kafka)
 
     if args.use_api in ("air", "both"):
         worked = True
-        build_air_dataset(hours=args.hours)
+        if from_file:
+            # Load from JSON file and write to Kafka
+            from dataset_builder import load_air_from_json_to_kafka
+            load_air_from_json_to_kafka()
+        else:
+            build_air_dataset(hours=args.hours, use_kafka=use_kafka)
 
     if not worked:
         logger.warning("No dataset action performed. Check --use-api option.")
@@ -332,6 +361,16 @@ Optional Flags Overview:
         default=24,
         help="Air dataset: number of hours of history to fetch (default: 24)",
     )
+    dataset_parser.add_argument(
+        "--use-kafka",
+        action="store_true",
+        help="Write datasets to Kafka topics instead of JSON files"
+    )
+    dataset_parser.add_argument(
+        "--from-file",
+        action="store_true",
+        help="Load data from existing JSON files instead of API (only works with --use-kafka)"
+    )
     
     # Batch layer command
     batch_parser = subparsers.add_parser("batch", help="Run batch layer processing")
@@ -349,6 +388,11 @@ Optional Flags Overview:
         "--use-api",
         action="store_true",
         help="Fetch directly from API instead of reading from raw JSON file"
+    )
+    batch_parser.add_argument(
+        "--use-kafka",
+        action="store_true",
+        help="Read data from Kafka topics instead of JSON files or API"
     )
     
     # Speed layer command
@@ -378,6 +422,11 @@ Optional Flags Overview:
         "--air-file",
         type=str,
         help=f"Path to air dataset JSON file (default: {AIR_RAW_FILE_PATH})"
+    )
+    speed_parser.add_argument(
+        "--use-kafka",
+        action="store_true",
+        help="Read data from Kafka topics instead of JSON files or API"
     )
     
     # Serving layer command
@@ -426,6 +475,11 @@ Optional Flags Overview:
         "--no-plots",
         action="store_true",
         help="Skip creating visualization plots"
+    )
+    full_parser.add_argument(
+        "--use-kafka",
+        action="store_true",
+        help="Use Kafka topics for reading/writing data instead of JSON files or API"
     )
     
     args = parser.parse_args()

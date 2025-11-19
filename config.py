@@ -71,6 +71,12 @@ POLLING_INTERVAL_MINUTES = 5  # Poll air quality API every 5 minutes
 MAX_RETRIES = 3  # Maximum retry attempts for API calls
 RETRY_DELAY_SECONDS = 5  # Delay between retries
 
+# Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TRAFFIC_TOPIC = os.getenv("KAFKA_TRAFFIC_TOPIC", "traffic-raw")
+KAFKA_AIR_QUALITY_TOPIC = os.getenv("KAFKA_AIR_QUALITY_TOPIC", "air-quality-raw")
+KAFKA_BATCH_CONSUMER_GROUP = os.getenv("KAFKA_BATCH_CONSUMER_GROUP", "lambda-batch-consumer")
+KAFKA_SPEED_CONSUMER_GROUP = os.getenv("KAFKA_SPEED_CONSUMER_GROUP", "lambda-speed-consumer")
 
 # Logging
 LOG_LEVEL = "INFO"

@@ -24,9 +24,17 @@ from config import (
     MAX_RETRIES,
     RETRY_DELAY_SECONDS,
     TRAFFIC_RAW_FILE_PATH,
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_TRAFFIC_TOPIC,
+    KAFKA_AIR_QUALITY_TOPIC,
 )
 from openaq_client import fetch_pm25_measurements
 from utils.data_loader import load_json, save_json
+from kafka_client import (
+    check_kafka_connection,
+    write_traffic_to_kafka,
+    write_air_quality_to_kafka,
+)
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -109,69 +117,143 @@ def _append_traffic_with_rolling_window(
     new_responses: list,
     output_file: Path,
     rolling_hours: int = 24,
+    use_kafka: bool = False,
 ) -> list:
-    """Append traffic responses to JSON, keep only last N hours."""
-    existing = _load_existing_json(output_file)
-    combined = existing + new_responses
+    """
+    Append traffic responses to JSON or Kafka, keep only last N hours.
     
-    # Filter by timestamp if responses have _fetched_at field
-    cutoff = datetime.now(HCMC_TZ) - timedelta(hours=rolling_hours)
-    filtered = []
-    for resp in combined:
-        fetched_at = resp.get("_fetched_at")
-        if fetched_at:
-            try:
-                resp_time = datetime.fromisoformat(fetched_at.replace('Z', '+00:00'))
-                if resp_time.tzinfo is None:
-                    resp_time = HCMC_TZ.localize(resp_time)
-                else:
-                    resp_time = resp_time.astimezone(HCMC_TZ)
-                if resp_time >= cutoff:
+    Args:
+        new_responses: New traffic responses to append
+        output_file: Path to JSON file (used if use_kafka=False)
+        rolling_hours: Hours to keep in rolling window
+        use_kafka: If True, write to Kafka; if False, write to JSON file
+    """
+    if use_kafka:
+        # Write directly to Kafka (no rolling window filtering needed - Kafka handles retention)
+        write_traffic_to_kafka(
+            new_responses,
+            KAFKA_BOOTSTRAP_SERVERS,
+            KAFKA_TRAFFIC_TOPIC,
+            raise_on_error=False,
+        )
+        logger.info(
+            "Wrote %s traffic responses to Kafka topic '%s'",
+            len(new_responses),
+            KAFKA_TRAFFIC_TOPIC,
+        )
+        return new_responses
+    else:
+        # Original JSON file logic with rolling window
+        existing = _load_existing_json(output_file)
+        combined = existing + new_responses
+        
+        # Filter by timestamp if responses have _fetched_at field
+        cutoff = datetime.now(HCMC_TZ) - timedelta(hours=rolling_hours)
+        filtered = []
+        for resp in combined:
+            fetched_at = resp.get("_fetched_at")
+            if fetched_at:
+                try:
+                    resp_time = datetime.fromisoformat(fetched_at.replace('Z', '+00:00'))
+                    if resp_time.tzinfo is None:
+                        resp_time = HCMC_TZ.localize(resp_time)
+                    else:
+                        resp_time = resp_time.astimezone(HCMC_TZ)
+                    if resp_time >= cutoff:
+                        filtered.append(resp)
+                except Exception:
+                    # If timestamp parsing fails, keep the response
                     filtered.append(resp)
-            except Exception:
-                # If timestamp parsing fails, keep the response
+            else:
+                # If no timestamp, keep it
                 filtered.append(resp)
-        else:
-            # If no timestamp, keep it
-            filtered.append(resp)
-    
-    save_json(filtered, output_file)
-    logger.info(
-        "Saved %s traffic responses to %s (rolling window %sh)",
-        len(filtered),
-        output_file,
-        rolling_hours,
-    )
-    return filtered
+        
+        save_json(filtered, output_file)
+        logger.info(
+            "Saved %s traffic responses to %s (rolling window %sh)",
+            len(filtered),
+            output_file,
+            rolling_hours,
+        )
+        return filtered
 
 
 # ---------------------------------------------------------------------------
 # Traffic dataset helpers
 
 
-def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH):
-    """Fetch a single snapshot of traffic data and overwrite dataset file with raw JSON."""
+def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH, use_kafka: bool = False):
+    """
+    Fetch a single snapshot of traffic data and save to JSON file or Kafka.
+    
+    Args:
+        output_file: Path to JSON file (used if use_kafka=False)
+        use_kafka: If True, write to Kafka; if False, write to JSON file
+    """
     logger.info("Starting traffic snapshot collection (TomTom API)...")
+    
+    if use_kafka:
+        # Check Kafka connection before proceeding
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    
     raw_responses = _fetch_traffic_raw_responses()
     if not raw_responses:
         logger.warning("No traffic data fetched for snapshot.")
         return
-    save_json(raw_responses, output_file)
-    logger.info("Traffic snapshot saved to %s (%s responses)", output_file, len(raw_responses))
+    
+    if use_kafka:
+        write_traffic_to_kafka(
+            raw_responses,
+            KAFKA_BOOTSTRAP_SERVERS,
+            KAFKA_TRAFFIC_TOPIC,
+            raise_on_error=True,
+        )
+        logger.info("Traffic snapshot written to Kafka topic '%s' (%s responses)", KAFKA_TRAFFIC_TOPIC, len(raw_responses))
+    else:
+        save_json(raw_responses, output_file)
+        logger.info("Traffic snapshot saved to %s (%s responses)", output_file, len(raw_responses))
 
 
 def run_traffic_collector(
     output_file: Path = TRAFFIC_RAW_FILE_PATH,
     interval_minutes: int = 30,
     duration_hours: int = 24,
+    use_kafka: bool = False,
 ):
-    """Run a collector loop that appends raw API responses every interval for duration_hours."""
+    """
+    Run a collector loop that appends raw API responses every interval for duration_hours.
+    
+    Args:
+        output_file: Path to JSON file (used if use_kafka=False)
+        interval_minutes: Minutes between collection iterations
+        duration_hours: Total duration to run collector
+        use_kafka: If True, write to Kafka; if False, write to JSON file
+    """
+    if use_kafka:
+        # Check Kafka connection before proceeding
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+        destination = f"Kafka topic '{KAFKA_TRAFFIC_TOPIC}'"
+    else:
+        destination = str(output_file)
+    
     end_time = datetime.now(HCMC_TZ) + timedelta(hours=duration_hours)
     logger.info(
         "Starting traffic collector for %sh at %s-minute intervals -> %s",
         duration_hours,
         interval_minutes,
-        output_file,
+        destination,
     )
 
     iteration = 0
@@ -187,6 +269,7 @@ def run_traffic_collector(
                     raw_responses,
                     output_file,
                     rolling_hours=24,
+                    use_kafka=use_kafka,
                 )
 
             if datetime.now(HCMC_TZ) >= end_time:
@@ -217,15 +300,126 @@ def _fetch_air_quality_last_24h(hours: int = 24):
         return []
 
 
-def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24):
-    """Fetch last `hours` of air quality measurements and save as raw JSON."""
+def load_traffic_from_json_to_kafka(json_file: Path = TRAFFIC_RAW_FILE_PATH):
+    """
+    Load traffic data from JSON file and write to Kafka topic.
+    
+    Args:
+        json_file: Path to JSON file containing traffic data
+    """
+    logger.info(f"Loading traffic data from {json_file} and writing to Kafka...")
+    
+    if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+        error_msg = (
+            f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+            "Start Kafka with: docker-compose up -d"
+        )
+        logger.error(error_msg)
+        raise ConnectionError(error_msg)
+    
+    if not json_file.exists():
+        error_msg = f"JSON file not found: {json_file}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    
+    try:
+        raw_responses = load_json(json_file)
+        if not raw_responses:
+            logger.warning(f"No data found in {json_file}")
+            return
+        
+        write_traffic_to_kafka(
+            raw_responses,
+            KAFKA_BOOTSTRAP_SERVERS,
+            KAFKA_TRAFFIC_TOPIC,
+            raise_on_error=True,
+        )
+        logger.info(
+            f"Loaded {len(raw_responses)} traffic records from JSON and wrote to Kafka topic '{KAFKA_TRAFFIC_TOPIC}'"
+        )
+    except Exception as e:
+        logger.error(f"Failed to load traffic data from JSON to Kafka: {e}")
+        raise
+
+
+def load_air_from_json_to_kafka(json_file: Path = AIR_RAW_FILE_PATH):
+    """
+    Load air quality data from JSON file and write to Kafka topic.
+    
+    Args:
+        json_file: Path to JSON file containing air quality data
+    """
+    logger.info(f"Loading air quality data from {json_file} and writing to Kafka...")
+    
+    if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+        error_msg = (
+            f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+            "Start Kafka with: docker-compose up -d"
+        )
+        logger.error(error_msg)
+        raise ConnectionError(error_msg)
+    
+    if not json_file.exists():
+        error_msg = f"JSON file not found: {json_file}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    
+    try:
+        measurements = load_json(json_file)
+        if not measurements:
+            logger.warning(f"No data found in {json_file}")
+            return
+        
+        write_air_quality_to_kafka(
+            measurements,
+            KAFKA_BOOTSTRAP_SERVERS,
+            KAFKA_AIR_QUALITY_TOPIC,
+            raise_on_error=True,
+        )
+        logger.info(
+            f"Loaded {len(measurements)} air quality records from JSON and wrote to Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}'"
+        )
+    except Exception as e:
+        logger.error(f"Failed to load air quality data from JSON to Kafka: {e}")
+        raise
+
+
+def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24, use_kafka: bool = False):
+    """
+    Fetch last `hours` of air quality measurements and save as raw JSON or write to Kafka.
+    
+    Args:
+        output_file: Path to JSON file (used if use_kafka=False)
+        hours: Number of hours of history to fetch
+        use_kafka: If True, write to Kafka; if False, write to JSON file
+    """
     logger.info("Starting air quality dataset collection (OpenAQ)...")
+    
+    if use_kafka:
+        # Check Kafka connection before proceeding
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    
     measurements = _fetch_air_quality_last_24h(hours=hours)
     if not measurements:
         logger.warning("No air quality measurements fetched for dataset.")
         return
 
-    # Save measurements directly as JSON array
-    save_json(measurements, output_file)
-    logger.info("Air quality dataset saved to %s (%s measurements)", output_file, len(measurements))
+    if use_kafka:
+        write_air_quality_to_kafka(
+            measurements,
+            KAFKA_BOOTSTRAP_SERVERS,
+            KAFKA_AIR_QUALITY_TOPIC,
+            raise_on_error=True,
+        )
+        logger.info("Air quality dataset written to Kafka topic '%s' (%s measurements)", KAFKA_AIR_QUALITY_TOPIC, len(measurements))
+    else:
+        # Save measurements directly as JSON array
+        save_json(measurements, output_file)
+        logger.info("Air quality dataset saved to %s (%s measurements)", output_file, len(measurements))
 

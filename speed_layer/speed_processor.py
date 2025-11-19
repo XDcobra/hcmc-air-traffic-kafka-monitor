@@ -18,9 +18,16 @@ from config import (
     OPENAQ_API_KEY,
     POLLING_INTERVAL_MINUTES,
     SPEED_VIEWS_DIR,
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_AIR_QUALITY_TOPIC,
+    KAFKA_SPEED_CONSUMER_GROUP,
 )
 from openaq_client import fetch_pm25_measurements
 from utils.data_loader import load_csv, load_json, parse_timestamp, save_csv
+from kafka_client import (
+    check_kafka_connection,
+    read_air_quality_from_kafka,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +130,9 @@ def parse_measurements(measurements):
                     datetime_to = period_info.get("datetimeTo") or period_info.get("datetime_to")
                     datetime_from = period_info.get("datetimeFrom") or period_info.get("datetime_from")
 
-                    # Prefer datetimeTo (end of interval). Fall back to datetimeFrom if needed.
-                    for candidate in (datetime_to, datetime_from):
+                    # Prefer datetimeFrom (start of interval) to match generate_traffic_data.py logic.
+                    # Fall back to datetimeTo if datetimeFrom is not available.
+                    for candidate in (datetime_from, datetime_to):
                         if isinstance(candidate, dict):
                             # Prefer local time (Vietnam timezone) over UTC
                             dt_str = (
@@ -291,23 +299,75 @@ def append_air_quality_data(new_df, file_path=None, overwrite=False):
             logger.info(f"Appended {len(new_df)} new records. Total: {len(combined_df)} records")
 
 
-def collect_air_quality_once(use_api=True, dataset_file=None):
+def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
     """
-    Collect air quality data once from the API or load from raw JSON dataset.
+    Collect air quality data once from the API, Kafka, or load from raw JSON dataset.
     
     Args:
         use_api: If True, fetch from OpenAQ API and write to speed view CSV.
-                 If False, load from raw JSON dataset file and process to speed view CSV.
+                 If False and use_kafka=False, load from raw JSON dataset file.
         dataset_file: Optional path to raw JSON dataset file (default: AIR_RAW_FILE_PATH)
+                     Ignored if use_kafka=True.
+        use_kafka: If True, read from Kafka topic; if False, use API or JSON file.
     
     Returns:
         pandas.DataFrame: Air quality measurements
     
     Raises:
-        FileNotFoundError: If dataset file doesn't exist when use_api=False
-        ValueError: If dataset file is empty when use_api=False
+        FileNotFoundError: If dataset file doesn't exist when use_api=False and use_kafka=False
+        ConnectionError: If Kafka is unavailable when use_kafka=True
+        ValueError: If dataset file is empty when use_api=False and use_kafka=False
     """
-    if use_api:
+    if use_kafka:
+        # Check Kafka connection before proceeding
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+        
+        logger.info(f"Loading air quality data from Kafka topic: {KAFKA_AIR_QUALITY_TOPIC}")
+        
+        try:
+            measurements = read_air_quality_from_kafka(
+                KAFKA_BOOTSTRAP_SERVERS,
+                KAFKA_AIR_QUALITY_TOPIC,
+                KAFKA_SPEED_CONSUMER_GROUP,
+                timeout_ms=10000,
+                raise_on_error=True,
+            )
+            
+            if not measurements:
+                error_msg = (
+                    f"Error: No messages found in Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}'. "
+                    f"Please populate it first with: uv run python main.py dataset --use-api air --use-kafka"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # Parse measurements to DataFrame
+            df = parse_measurements(measurements)
+            
+            if df.empty:
+                logger.warning("No valid measurements found in Kafka topic")
+                return df
+            
+            # Write to speed view CSV
+            target_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
+            append_air_quality_data(df, file_path=target_path, overwrite=True)
+            logger.info(
+                f"Processed {len(df)} air quality records from Kafka to {target_path}"
+            )
+            
+            return df
+            
+        except Exception as e:
+            error_msg = f"Error reading from Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}': {e}"
+            logger.error(error_msg)
+            raise
+    elif use_api:
         logger.info("Collecting air quality data from OpenAQ API...")
         
         try:
@@ -381,16 +441,17 @@ def collect_air_quality_once(use_api=True, dataset_file=None):
             raise ValueError(error_msg) from e
 
 
-def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, max_iterations=None, use_api=True):
+def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, max_iterations=None, use_api=True, use_kafka=False):
     """
-    Continuously poll air quality API at specified intervals.
+    Continuously poll air quality API or Kafka at specified intervals.
     
     Args:
         interval_minutes: Polling interval in minutes
-        max_iterations: Maximum number of iterations (None for infinite)
-        use_api: If True, fetch from API. If False, only load from local file (not useful for continuous mode)
+        max_iterations: Maximum number of iterations (None = infinite)
+        use_api: If True, fetch from OpenAQ API; if False and use_kafka=False, load from JSON file
+        use_kafka: If True, read from Kafka topic; if False, use API or JSON file
     """
-    logger.info(f"Starting continuous air quality collection (interval: {interval_minutes} minutes, use_api={use_api})")
+    logger.info(f"Starting continuous air quality collection (interval: {interval_minutes} minutes, use_api={use_api}, use_kafka={use_kafka})")
     
     iteration = 0
     
@@ -404,7 +465,7 @@ def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, ma
             logger.info(f"Iteration {iteration}: Collecting air quality data...")
             
             try:
-                collect_air_quality_once(use_api=use_api)
+                collect_air_quality_once(use_api=use_api, use_kafka=use_kafka)
             except Exception as e:
                 logger.error(f"Error in iteration {iteration}: {e}")
                 # Continue to next iteration even if this one failed

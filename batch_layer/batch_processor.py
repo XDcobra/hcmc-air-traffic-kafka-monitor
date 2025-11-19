@@ -9,8 +9,15 @@ from config import (
     TRAFFIC_RAW_FILE_PATH,
     TRAFFIC_BATCH_VIEW_FILE,
     HCMC_TIMEZONE,
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_TRAFFIC_TOPIC,
+    KAFKA_BATCH_CONSUMER_GROUP,
 )
 from utils.data_loader import load_json, parse_timestamp, floor_to_hour, save_csv
+from kafka_client import (
+    check_kafka_connection,
+    read_traffic_from_kafka,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,57 +133,94 @@ def parse_traffic_json(raw_responses):
 
 
 
-def process_batch_layer(traffic_file=None):
+def process_batch_layer(traffic_file=None, use_kafka=False):
     """
     Process historical traffic data to create batch views.
     
     Args:
         traffic_file: Optional path to traffic data JSON file. If None, will search for it.
+                     Ignored if use_kafka=True.
+        use_kafka: If True, read from Kafka topic; if False, read from JSON file.
         
     Returns:
         pandas.DataFrame: Aggregated batch view
         
     Raises:
-        FileNotFoundError: If traffic file is not found
+        FileNotFoundError: If traffic file is not found (when use_kafka=False)
+        ConnectionError: If Kafka is unavailable (when use_kafka=True)
         ValueError: If required columns are missing or file is empty
     """
-    # Find traffic file if not provided
-    if traffic_file is None:
-        traffic_file = find_traffic_file()
-    else:
-        traffic_file = Path(traffic_file)
-    
-    if not traffic_file.exists():
-        error_msg = (
-            f"Error: Dataset file '{traffic_file}' not found or empty. "
-            f"Please create it first with: uv run python main.py dataset --use-api traffic"
-        )
-        logger.error(error_msg)
-        raise FileNotFoundError(error_msg)
-    
-    logger.info(f"Processing batch layer with file: {traffic_file}")
-    
-    # Load and parse JSON
-    try:
-        raw_responses = load_json(traffic_file)
-        if not raw_responses:
+    if use_kafka:
+        # Check Kafka connection before proceeding
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
             error_msg = (
-                f"Error: Dataset file '{traffic_file}' is empty. "
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+        
+        logger.info(f"Processing batch layer from Kafka topic: {KAFKA_TRAFFIC_TOPIC}")
+        
+        # Read from Kafka
+        try:
+            raw_responses = read_traffic_from_kafka(
+                KAFKA_BOOTSTRAP_SERVERS,
+                KAFKA_TRAFFIC_TOPIC,
+                KAFKA_BATCH_CONSUMER_GROUP,
+                timeout_ms=10000,
+                raise_on_error=True,
+            )
+            if not raw_responses:
+                error_msg = (
+                    f"Error: No messages found in Kafka topic '{KAFKA_TRAFFIC_TOPIC}'. "
+                    f"Please populate it first with: uv run python main.py dataset --use-api traffic --use-kafka"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            df = parse_traffic_json(raw_responses)
+        except Exception as e:
+            error_msg = f"Error reading from Kafka topic '{KAFKA_TRAFFIC_TOPIC}': {e}"
+            logger.error(error_msg)
+            raise
+    else:
+        # Find traffic file if not provided
+        if traffic_file is None:
+            traffic_file = find_traffic_file()
+        else:
+            traffic_file = Path(traffic_file)
+        
+        if not traffic_file.exists():
+            error_msg = (
+                f"Error: Dataset file '{traffic_file}' not found or empty. "
                 f"Please create it first with: uv run python main.py dataset --use-api traffic"
             )
             logger.error(error_msg)
-            raise ValueError(error_msg)
-        df = parse_traffic_json(raw_responses)
-    except (FileNotFoundError, ValueError) as e:
-        # Re-raise these specific errors
-        raise
-    except Exception as e:
-        error_msg = (
-            f"Error loading dataset file '{traffic_file}': {e}. "
-            f"Please create it first with: uv run python main.py dataset --use-api traffic"
-        )
-        logger.error(error_msg)
-        raise ValueError(error_msg) from e
+            raise FileNotFoundError(error_msg)
+        
+        logger.info(f"Processing batch layer with file: {traffic_file}")
+        
+        # Load and parse JSON
+        try:
+            raw_responses = load_json(traffic_file)
+            if not raw_responses:
+                error_msg = (
+                    f"Error: Dataset file '{traffic_file}' is empty. "
+                    f"Please create it first with: uv run python main.py dataset --use-api traffic"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            df = parse_traffic_json(raw_responses)
+        except (FileNotFoundError, ValueError) as e:
+            # Re-raise these specific errors
+            raise
+        except Exception as e:
+            error_msg = (
+                f"Error loading dataset file '{traffic_file}': {e}. "
+                f"Please create it first with: uv run python main.py dataset --use-api traffic"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg) from e
     
     logger.info(f"Loaded {len(df)} rows of traffic data")
     
@@ -255,14 +299,15 @@ def save_batch_view(batch_df, output_file=None):
     logger.info(f"Batch view saved to {output_file}")
 
 
-def run_batch_processing(traffic_file=None, output_file=None, use_api=False):
+def run_batch_processing(traffic_file=None, output_file=None, use_api=False, use_kafka=False):
     """
     Complete batch processing pipeline.
     
     Args:
-        traffic_file: Optional path to traffic data file (ignored if use_api=True)
+        traffic_file: Optional path to traffic data file (ignored if use_api=True or use_kafka=True)
         output_file: Optional output file path (ignored if use_api=True, uses default)
-        use_api: If True, use TomTom API for traffic data. If False, use CSV file.
+        use_api: If True, use TomTom API for traffic data. If False, use file or Kafka.
+        use_kafka: If True, read from Kafka topic. If False and use_api=False, use JSON file.
         
     Returns:
         pandas.DataFrame: The created batch view
@@ -280,10 +325,13 @@ def run_batch_processing(traffic_file=None, output_file=None, use_api=False):
             logger.error(error_msg)
             raise ImportError(error_msg)
     
-    # Otherwise, use file-based processing
-    logger.info("Using local dataset file for traffic data...")
-    # Process data
-    batch_df = process_batch_layer(traffic_file)
+    # Process data (from Kafka or file)
+    if use_kafka:
+        logger.info("Using Kafka topic for traffic data...")
+        batch_df = process_batch_layer(use_kafka=True)
+    else:
+        logger.info("Using local dataset file for traffic data...")
+        batch_df = process_batch_layer(traffic_file, use_kafka=False)
     
     # Save batch view
     save_batch_view(batch_df, output_file)

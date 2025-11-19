@@ -99,3 +99,5 @@ dmypy.json
 # Uncomment if you want to ignore it:
 # uv.lock
 
+# personal debug files
+debugging/
