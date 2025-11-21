@@ -11,8 +11,10 @@ This project is part of a Master's course on "New Trends in ICT" and demonstrate
 - **Serving Layer**: Combining both datasets to identify critical periods where traffic congestion and air pollution coincide
 
 <p align="center">
-  <img src="docs/architecture_overview.png" alt="Lambda Architecture Overview" width="50%" />
+  <img src="docs/architecture_overview.png" alt="Lambda Architecture Overview (JSON pipeline)" width="45%" />
+  <img src="docs/architecture_overview_kafka.png" alt="Lambda Architecture Overview (Kafka pipeline)" width="45%" />
 </p>
+<p align="center"><em>Left: JSON-based ingestion. Right: Kafka-extended ingestion.</em></p>
 
 ### Use Case
 
