@@ -12,8 +12,17 @@ from config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_TRAFFIC_TOPIC,
     KAFKA_BATCH_CONSUMER_GROUP,
+    LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH,
 )
-from utils.data_loader import load_json, parse_timestamp, floor_to_hour, save_csv
+from utils.data_loader import (
+    load_json,
+    parse_timestamp,
+    floor_to_hour,
+    save_csv,
+    check_lakehouse_available,
+    save_to_delta_table,
+    load_from_delta_table,
+)
 from kafka_client import (
     check_kafka_connection,
     read_traffic_from_kafka,
@@ -133,21 +142,23 @@ def parse_traffic_json(raw_responses):
 
 
 
-def process_batch_layer(traffic_file=None, use_kafka=False):
+def process_batch_layer(traffic_file=None, use_kafka=False, use_lakehouse=False):
     """
     Process historical traffic data to create batch views.
     
     Args:
         traffic_file: Optional path to traffic data JSON file. If None, will search for it.
-                     Ignored if use_kafka=True.
-        use_kafka: If True, read from Kafka topic; if False, read from JSON file.
+                     Ignored if use_kafka=True or use_lakehouse=True.
+        use_kafka: If True, read from Kafka topic; if False, read from JSON file or Lakehouse.
+        use_lakehouse: If True, read from Lakehouse Delta table; if False, read from JSON file or Kafka.
         
     Returns:
         pandas.DataFrame: Aggregated batch view
         
     Raises:
-        FileNotFoundError: If traffic file is not found (when use_kafka=False)
+        FileNotFoundError: If traffic file is not found (when use_kafka=False and use_lakehouse=False)
         ConnectionError: If Kafka is unavailable (when use_kafka=True)
+        ConnectionError: If Lakehouse is unavailable (when use_lakehouse=True)
         ValueError: If required columns are missing or file is empty
     """
     if use_kafka:
@@ -181,6 +192,48 @@ def process_batch_layer(traffic_file=None, use_kafka=False):
             df = parse_traffic_json(raw_responses)
         except Exception as e:
             error_msg = f"Error reading from Kafka topic '{KAFKA_TRAFFIC_TOPIC}': {e}"
+            logger.error(error_msg)
+            raise
+    elif use_lakehouse:
+        # Check Lakehouse connection before proceeding
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+        
+        logger.info(f"Processing batch layer from Lakehouse: {LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH}")
+        
+        # Try to read from existing batch view in Lakehouse
+        try:
+            df = load_from_delta_table(LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH, raise_on_error=False)
+            if df is not None and not df.empty:
+                logger.info(f"Loaded {len(df)} rows from Lakehouse batch view")
+                return df
+            else:
+                # If batch view doesn't exist, fall back to reading raw data from Lakehouse
+                from config import LAKEHOUSE_TRAFFIC_RAW_PATH
+                logger.info("Batch view not found in Lakehouse, reading raw traffic data...")
+                raw_df = load_from_delta_table(LAKEHOUSE_TRAFFIC_RAW_PATH, raise_on_error=False)
+                if raw_df is None or raw_df.empty:
+                    error_msg = (
+                        f"Error: No data found in Lakehouse. "
+                        f"Please populate it first with: python main.py dataset --use-api traffic --use-lakehouse"
+                    )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                # Raw data from Lakehouse is already a DataFrame with timestamp, segment_id, velocity
+                # We can use it directly, but need to ensure it has the right structure
+                df = raw_df
+                # Ensure timestamp column exists and is datetime
+                if 'timestamp' not in df.columns:
+                    error_msg = "Raw traffic data from Lakehouse missing 'timestamp' column"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+        except Exception as e:
+            error_msg = f"Error reading from Lakehouse: {e}"
             logger.error(error_msg)
             raise
     else:
@@ -282,14 +335,46 @@ def process_batch_layer(traffic_file=None, use_kafka=False):
     return grouped
 
 
-def save_batch_view(batch_df, output_file=None):
+def save_batch_view(batch_df, output_file=None, use_lakehouse=False):
     """
-    Save batch view to CSV.
+    Save batch view to CSV or Delta Lake table.
     
     Args:
         batch_df: Aggregated batch view DataFrame
         output_file: Optional output file path. If None, uses default from config.
+                    Ignored if use_lakehouse=True.
+        use_lakehouse: If True, save to Delta Lake table; if False, save to CSV.
     """
+    if use_lakehouse:
+        # Check Lakehouse availability
+        if not check_lakehouse_available():
+            logger.warning("Lakehouse unavailable, falling back to CSV")
+            use_lakehouse = False
+        
+        if use_lakehouse:
+            try:
+                # Add partition columns for better query performance
+                from lakehouse_client import add_partition_columns
+                batch_df = add_partition_columns(batch_df, timestamp_col="timestamp")
+                
+                # Save to Delta Lake
+                success = save_to_delta_table(
+                    df=batch_df,
+                    table_path=LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH,
+                    mode="overwrite",
+                    partition_by=["year", "month"],
+                    raise_on_error=False,
+                )
+                if success:
+                    logger.info(f"Batch view saved to Lakehouse: {LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH}")
+                    return
+                else:
+                    logger.warning("Failed to save to Lakehouse, falling back to CSV")
+            except Exception as e:
+                logger.warning(f"Error saving to Lakehouse: {e}, falling back to CSV")
+                use_lakehouse = False
+    
+    # Fallback to CSV
     if output_file is None:
         output_file = BATCH_VIEWS_DIR / TRAFFIC_BATCH_VIEW_FILE
     else:
@@ -299,15 +384,16 @@ def save_batch_view(batch_df, output_file=None):
     logger.info(f"Batch view saved to {output_file}")
 
 
-def run_batch_processing(traffic_file=None, output_file=None, use_api=False, use_kafka=False):
+def run_batch_processing(traffic_file=None, output_file=None, use_api=False, use_kafka=False, use_lakehouse=False):
     """
     Complete batch processing pipeline.
     
     Args:
-        traffic_file: Optional path to traffic data file (ignored if use_api=True or use_kafka=True)
-        output_file: Optional output file path (ignored if use_api=True, uses default)
-        use_api: If True, use TomTom API for traffic data. If False, use file or Kafka.
-        use_kafka: If True, read from Kafka topic. If False and use_api=False, use JSON file.
+        traffic_file: Optional path to traffic data file (ignored if use_api=True, use_kafka=True, or use_lakehouse=True)
+        output_file: Optional output file path (ignored if use_api=True or use_lakehouse=True, uses default)
+        use_api: If True, use TomTom API for traffic data. If False, use file, Kafka, or Lakehouse.
+        use_kafka: If True, read from Kafka topic. If False and use_api=False, use JSON file or Lakehouse.
+        use_lakehouse: If True, read from/write to Lakehouse. If False, use CSV/JSON files.
         
     Returns:
         pandas.DataFrame: The created batch view
@@ -319,22 +405,28 @@ def run_batch_processing(traffic_file=None, output_file=None, use_api=False, use
         if TRAFFIC_COLLECTOR_AVAILABLE:
             logger.info("Using TomTom API for traffic data collection...")
             batch_df = run_batch_processing_from_api(use_api=True, num_segments=50, hours_back=24)
+            # Save to Lakehouse if requested
+            if use_lakehouse:
+                save_batch_view(batch_df, use_lakehouse=True)
             return batch_df
         else:
             error_msg = "API collection requested but traffic_collector module not available."
             logger.error(error_msg)
             raise ImportError(error_msg)
     
-    # Process data (from Kafka or file)
+    # Process data (from Kafka, Lakehouse, or file)
     if use_kafka:
         logger.info("Using Kafka topic for traffic data...")
-        batch_df = process_batch_layer(use_kafka=True)
+        batch_df = process_batch_layer(use_kafka=True, use_lakehouse=False)
+    elif use_lakehouse:
+        logger.info("Using Lakehouse for traffic data...")
+        batch_df = process_batch_layer(use_kafka=False, use_lakehouse=True)
     else:
         logger.info("Using local dataset file for traffic data...")
-        batch_df = process_batch_layer(traffic_file, use_kafka=False)
+        batch_df = process_batch_layer(traffic_file, use_kafka=False, use_lakehouse=False)
     
     # Save batch view
-    save_batch_view(batch_df, output_file)
+    save_batch_view(batch_df, output_file, use_lakehouse=use_lakehouse)
     
     logger.info("Batch layer processing completed successfully")
     

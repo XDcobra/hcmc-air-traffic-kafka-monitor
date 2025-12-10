@@ -45,18 +45,27 @@ def run_batch_layer(args):
     logger.info("="*60)
     
     try:
-        # Check if API or Kafka should be used for traffic data
+        # Check if API, Kafka, or Lakehouse should be used for traffic data
         use_traffic_api = getattr(args, 'use_api', False)
         use_kafka = getattr(args, 'use_kafka', False)
+        use_lakehouse = getattr(args, 'use_lakehouse', False)
         
-        # If using API or Kafka, don't pass traffic_file (it will be ignored anyway)
-        traffic_file = None if (use_traffic_api or use_kafka) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
+        # Validate Lakehouse connection if requested
+        if use_lakehouse:
+            from utils.data_loader import check_lakehouse_available
+            if not check_lakehouse_available():
+                logger.error("Lakehouse unavailable. Start MinIO with: docker-compose up -d minio")
+                return 1
+        
+        # If using API, Kafka, or Lakehouse, don't pass traffic_file (it will be ignored anyway)
+        traffic_file = None if (use_traffic_api or use_kafka or use_lakehouse) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
 
         batch_df = run_batch_processing(
             traffic_file=traffic_file,
             output_file=getattr(args, 'output_file', None),
             use_api=use_traffic_api,
-            use_kafka=use_kafka
+            use_kafka=use_kafka,
+            use_lakehouse=use_lakehouse
         )
         logger.info("Batch layer completed successfully")
         return 0
@@ -72,30 +81,40 @@ def run_speed_layer(args):
     logger.info("="*60)
     
     try:
-        # Check if API or Kafka should be used for air quality data
+        # Check if API, Kafka, or Lakehouse should be used for air quality data
         use_air_api = getattr(args, 'use_api', False)
         use_kafka = getattr(args, 'use_kafka', False)
+        use_lakehouse = getattr(args, 'use_lakehouse', False)
         
-        # If using API or Kafka, don't pass dataset_file (it will be ignored)
-        dataset_air_file = None if (use_air_api or use_kafka) else _resolve_air_dataset_file(getattr(args, "air_file", None))
+        # Validate Lakehouse connection if requested
+        if use_lakehouse:
+            from utils.data_loader import check_lakehouse_available
+            if not check_lakehouse_available():
+                logger.error("Lakehouse unavailable. Start MinIO with: docker-compose up -d minio")
+                return 1
+        
+        # If using API, Kafka, or Lakehouse, don't pass dataset_file (it will be ignored)
+        dataset_air_file = None if (use_air_api or use_kafka or use_lakehouse) else _resolve_air_dataset_file(getattr(args, "air_file", None))
 
         if getattr(args, 'continuous', False):
-            if not use_air_api and not use_kafka:
-                logger.error("Continuous mode requires API or Kafka usage for air quality data.")
+            if not use_air_api and not use_kafka and not use_lakehouse:
+                logger.error("Continuous mode requires API, Kafka, or Lakehouse usage for air quality data.")
                 return 1
             logger.info("Running in continuous mode...")
             collect_air_quality_continuous(
                 interval_minutes=getattr(args, 'interval', 5),
                 max_iterations=getattr(args, 'max_iterations', None),
                 use_api=use_air_api,
-                use_kafka=use_kafka
+                use_kafka=use_kafka,
+                use_lakehouse=use_lakehouse
             )
         else:
             logger.info("Running one-time collection...")
             df = collect_air_quality_once(
                 use_api=use_air_api,
                 dataset_file=dataset_air_file,
-                use_kafka=use_kafka
+                use_kafka=use_kafka,
+                use_lakehouse=use_lakehouse
             )
             if not df.empty:
                 logger.info(f"Collected {len(df)} air quality measurements")
@@ -119,10 +138,20 @@ def run_serving_layer_cmd(args):
     logger.info("="*60)
     
     try:
+        use_lakehouse = getattr(args, 'use_lakehouse', False)
+        
+        # Validate Lakehouse connection if requested
+        if use_lakehouse:
+            from utils.data_loader import check_lakehouse_available
+            if not check_lakehouse_available():
+                logger.error("Lakehouse unavailable. Start MinIO with: docker-compose up -d minio")
+                return 1
+        
         combined_df, critical_df, stats = run_serving_layer(
             batch_file=args.batch_file,
             speed_file=args.speed_file,
-            create_plots=not args.no_plots
+            create_plots=not args.no_plots,
+            use_lakehouse=use_lakehouse
         )
         
         logger.info("Serving layer completed successfully")
@@ -143,15 +172,24 @@ def run_full_pipeline(args):
     # Check for --no-api flag
     no_api = getattr(args, 'no_api', False)
     
-    # Extract API mode and Kafka flag for dataset creation and layer processing
+    # Extract API mode, Kafka, and Lakehouse flags for dataset creation and layer processing
     api_mode = getattr(args, 'use_api', 'none')
     use_kafka = getattr(args, 'use_kafka', False)
+    use_lakehouse = getattr(args, 'use_lakehouse', False)
     use_traffic_api_for_layers = api_mode in ["both", "traffic"]
     use_air_api_for_layers = api_mode in ["both", "air"]
     
     logger.info(f"API usage mode: {api_mode} (traffic={use_traffic_api_for_layers}, air={use_air_api_for_layers})")
     logger.info(f"Kafka usage: {use_kafka}")
+    logger.info(f"Lakehouse usage: {use_lakehouse}")
     logger.info(f"--no-api flag: {no_api}")
+    
+    # Validate Lakehouse connection if requested
+    if use_lakehouse:
+        from utils.data_loader import check_lakehouse_available
+        if not check_lakehouse_available():
+            logger.error("Lakehouse unavailable. Start MinIO with: docker-compose up -d minio")
+            return 1
     
     # Step 0: Dataset creation (skip if --no-api)
     if not no_api:
@@ -159,9 +197,9 @@ def run_full_pipeline(args):
         try:
             # Create both datasets by default (dataset command always uses API)
             if api_mode in ["both", "traffic"]:
-                build_traffic_snapshot(use_kafka=use_kafka)
+                build_traffic_snapshot(use_kafka=use_kafka, use_lakehouse=use_lakehouse)
             if api_mode in ["both", "air"]:
-                build_air_dataset(hours=24, use_kafka=use_kafka)
+                build_air_dataset(hours=24, use_kafka=use_kafka, use_lakehouse=use_lakehouse)
         except Exception as e:
             logger.error(f"Dataset creation failed: {e}", exc_info=True)
             exit_code = 1
@@ -169,14 +207,14 @@ def run_full_pipeline(args):
     else:
         logger.info("\n[0/4] Skipping dataset creation (--no-api flag set)")
     
-    # Determine default input files when not using APIs or Kafka for layers
-    traffic_input = None if (use_traffic_api_for_layers or use_kafka) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
-    air_input = None if (use_air_api_for_layers or use_kafka) else _resolve_air_dataset_file(getattr(args, "air_file", None))
+    # Determine default input files when not using APIs, Kafka, or Lakehouse for layers
+    traffic_input = None if (use_traffic_api_for_layers or use_kafka or use_lakehouse) else _resolve_traffic_file(getattr(args, 'traffic_file', None))
+    air_input = None if (use_air_api_for_layers or use_kafka or use_lakehouse) else _resolve_air_dataset_file(getattr(args, "air_file", None))
 
     # Step 1: Batch layer
     logger.info("\n[1/4] Processing batch layer...")
     try:
-        run_batch_processing(traffic_file=traffic_input, use_api=use_traffic_api_for_layers, use_kafka=use_kafka)
+        run_batch_processing(traffic_file=traffic_input, use_api=use_traffic_api_for_layers, use_kafka=use_kafka, use_lakehouse=use_lakehouse)
     except Exception as e:
         logger.error(f"Batch layer failed: {e}", exc_info=True)
         exit_code = 1
@@ -188,7 +226,8 @@ def run_full_pipeline(args):
         collect_air_quality_once(
             use_api=use_air_api_for_layers,
             dataset_file=air_input,
-            use_kafka=use_kafka
+            use_kafka=use_kafka,
+            use_lakehouse=use_lakehouse
         )
     except Exception as e:
         logger.warning(f"Speed layer collection failed: {e}. Continuing with existing data if available.")
@@ -197,7 +236,7 @@ def run_full_pipeline(args):
     # Step 3: Serving layer
     logger.info("\n[3/4] Processing serving layer...")
     try:
-        run_serving_layer(create_plots=not getattr(args, 'no_plots', False))
+        run_serving_layer(create_plots=not getattr(args, 'no_plots', False), use_lakehouse=use_lakehouse)
     except Exception as e:
         logger.error(f"Serving layer failed: {e}", exc_info=True)
         exit_code = 1
@@ -238,23 +277,31 @@ def run_dataset_builder(args):
 
     worked = False
     use_kafka = getattr(args, 'use_kafka', False)
+    use_lakehouse = getattr(args, 'use_lakehouse', False)
     from_file = getattr(args, 'from_file', False)
     
     # Validate --from-file usage
-    if from_file and not use_kafka:
-        logger.error("--from-file requires --use-kafka flag")
+    if from_file and not (use_kafka or use_lakehouse):
+        logger.error("--from-file requires --use-kafka or --use-lakehouse flag")
         return 1
     
     if from_file and args.collector:
         logger.error("--from-file cannot be used with --collector (collector requires API)")
         return 1
+    
+    # Validate --use-lakehouse: Check MinIO connection if requested
+    if use_lakehouse:
+        from utils.data_loader import check_lakehouse_available
+        if not check_lakehouse_available():
+            logger.error("Lakehouse unavailable. Start MinIO with: docker-compose up -d minio")
+            return 1
 
     if args.use_api in ("traffic", "both"):
         worked = True
         if from_file:
-            # Load from JSON file and write to Kafka
+            # Load from JSON file and write to Kafka or Lakehouse
             from dataset_builder import load_traffic_from_json_to_kafka
-            load_traffic_from_json_to_kafka()
+            load_traffic_from_json_to_kafka(use_lakehouse=use_lakehouse)
         elif args.collector:
             run_traffic_collector(
                 interval_minutes=args.interval,
@@ -263,16 +310,16 @@ def run_dataset_builder(args):
             )
         else:
             # default or --current -> snapshot that overwrites file
-            build_traffic_snapshot(use_kafka=use_kafka)
+            build_traffic_snapshot(use_kafka=use_kafka, use_lakehouse=use_lakehouse)
 
     if args.use_api in ("air", "both"):
         worked = True
         if from_file:
-            # Load from JSON file and write to Kafka
+            # Load from JSON file and write to Kafka or Lakehouse
             from dataset_builder import load_air_from_json_to_kafka
-            load_air_from_json_to_kafka()
+            load_air_from_json_to_kafka(use_lakehouse=use_lakehouse)
         else:
-            build_air_dataset(hours=args.hours, use_kafka=use_kafka)
+            build_air_dataset(hours=args.hours, use_kafka=use_kafka, use_lakehouse=use_lakehouse)
 
     if not worked:
         logger.warning("No dataset action performed. Check --use-api option.")
@@ -369,7 +416,12 @@ Optional Flags Overview:
     dataset_parser.add_argument(
         "--from-file",
         action="store_true",
-        help="Load data from existing JSON files instead of API (only works with --use-kafka)"
+        help="Load data from existing JSON files instead of API (requires --use-kafka or --use-lakehouse)"
+    )
+    dataset_parser.add_argument(
+        "--use-lakehouse",
+        action="store_true",
+        help="Write datasets to Lakehouse (MinIO/Delta Lake) instead of JSON files or Kafka"
     )
     
     # Batch layer command
@@ -393,6 +445,11 @@ Optional Flags Overview:
         "--use-kafka",
         action="store_true",
         help="Read data from Kafka topics instead of JSON files or API"
+    )
+    batch_parser.add_argument(
+        "--use-lakehouse",
+        action="store_true",
+        help="Read/write data from/to Lakehouse (MinIO/Delta Lake) instead of CSV files"
     )
     
     # Speed layer command
@@ -428,6 +485,11 @@ Optional Flags Overview:
         action="store_true",
         help="Read data from Kafka topics instead of JSON files or API"
     )
+    speed_parser.add_argument(
+        "--use-lakehouse",
+        action="store_true",
+        help="Read/write data from/to Lakehouse (MinIO/Delta Lake) instead of CSV files"
+    )
     
     # Serving layer command
     serving_parser = subparsers.add_parser("serving", help="Run serving layer processing")
@@ -445,6 +507,11 @@ Optional Flags Overview:
         "--no-plots",
         action="store_true",
         help="Skip creating visualization plots"
+    )
+    serving_parser.add_argument(
+        "--use-lakehouse",
+        action="store_true",
+        help="Read/write data from/to Lakehouse (MinIO/Delta Lake) instead of CSV files"
     )
     
     # Full pipeline command
@@ -480,6 +547,11 @@ Optional Flags Overview:
         "--use-kafka",
         action="store_true",
         help="Use Kafka topics for reading/writing data instead of JSON files or API"
+    )
+    full_parser.add_argument(
+        "--use-lakehouse",
+        action="store_true",
+        help="Use Lakehouse (MinIO/Delta Lake) for reading/writing data instead of CSV/JSON files"
     )
     
     args = parser.parse_args()

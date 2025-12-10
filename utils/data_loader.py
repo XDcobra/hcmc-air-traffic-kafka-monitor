@@ -205,3 +205,88 @@ def save_json(data, file_path, indent=2):
         logger.error(f"Error saving JSON to {file_path}: {e}")
         raise
 
+
+def check_lakehouse_available():
+    """
+    Check if Lakehouse (MinIO + Delta Lake) is available.
+    
+    Returns:
+        bool: True if Lakehouse is available, False otherwise
+    """
+    try:
+        from lakehouse_client import check_minio_connection
+        return check_minio_connection()
+    except ImportError:
+        return False
+    except Exception as e:
+        logger.debug(f"Lakehouse availability check failed: {e}")
+        return False
+
+
+def save_to_delta_table(df, table_path, mode="overwrite", partition_by=None, raise_on_error=False):
+    """
+    Wrapper for saving DataFrame to Delta Lake table.
+    
+    Args:
+        df: DataFrame to save
+        table_path: S3 path to Delta table
+        mode: Write mode - "overwrite", "append", or "error"
+        partition_by: List of column names to partition by
+        raise_on_error: If True, raise exception on error
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        from lakehouse_client import write_to_delta_table, add_partition_columns
+        
+        # Add partition columns if partition_by is specified and contains timestamp-based partitions
+        if partition_by and any(p in ["year", "month", "day"] for p in partition_by):
+            if "timestamp" in df.columns:
+                df = add_partition_columns(df, timestamp_col="timestamp")
+        
+        return write_to_delta_table(
+            df=df,
+            table_path=table_path,
+            mode=mode,
+            partition_by=partition_by,
+            raise_on_error=raise_on_error,
+        )
+    except ImportError:
+        error_msg = "Lakehouse client not available. Install deltalake and s3fs."
+        logger.error(error_msg)
+        if raise_on_error:
+            raise ImportError(error_msg)
+        return False
+    except Exception as e:
+        logger.error(f"Error saving to Delta table: {e}")
+        if raise_on_error:
+            raise
+        return False
+
+
+def load_from_delta_table(table_path, raise_on_error=False):
+    """
+    Wrapper for loading data from Delta Lake table.
+    
+    Args:
+        table_path: S3 path to Delta table
+        raise_on_error: If True, raise exception on error
+        
+    Returns:
+        pd.DataFrame: DataFrame with table data, or None on error
+    """
+    try:
+        from lakehouse_client import read_from_delta_table
+        return read_from_delta_table(table_path=table_path, raise_on_error=raise_on_error)
+    except ImportError:
+        error_msg = "Lakehouse client not available. Install deltalake and s3fs."
+        logger.error(error_msg)
+        if raise_on_error:
+            raise ImportError(error_msg)
+        return None
+    except Exception as e:
+        logger.error(f"Error loading from Delta table: {e}")
+        if raise_on_error:
+            raise
+        return None

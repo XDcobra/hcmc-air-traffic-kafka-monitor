@@ -21,9 +21,18 @@ from config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_AIR_QUALITY_TOPIC,
     KAFKA_SPEED_CONSUMER_GROUP,
+    LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH,
 )
 from openaq_client import fetch_pm25_measurements
-from utils.data_loader import load_csv, load_json, parse_timestamp, save_csv
+from utils.data_loader import (
+    load_csv,
+    load_json,
+    parse_timestamp,
+    save_csv,
+    check_lakehouse_available,
+    save_to_delta_table,
+    load_from_delta_table,
+)
 from kafka_client import (
     check_kafka_connection,
     read_air_quality_from_kafka,
@@ -228,16 +237,37 @@ def parse_measurements(measurements):
     return df
 
 
-def load_existing_air_quality_data(file_path=None):
+def load_existing_air_quality_data(file_path=None, use_lakehouse=False):
     """
-    Load existing air quality data from CSV.
+    Load existing air quality data from CSV or Delta Lake table.
     
     Args:
-        file_path: Optional path to CSV file
+        file_path: Optional path to CSV file (ignored if use_lakehouse=True)
+        use_lakehouse: If True, load from Delta Lake table; if False, load from CSV
         
     Returns:
         pandas.DataFrame: Existing air quality data
     """
+    if use_lakehouse:
+        if not check_lakehouse_available():
+            logger.warning("Lakehouse unavailable, falling back to CSV")
+            use_lakehouse = False
+        
+        if use_lakehouse:
+            try:
+                df = load_from_delta_table(LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH, raise_on_error=False)
+                if df is not None and not df.empty:
+                    df = parse_timestamp(df, "timestamp")
+                    logger.info(f"Loaded {len(df)} existing air quality records from Lakehouse")
+                    return df
+                else:
+                    logger.info("No existing air quality data found in Lakehouse")
+                    return pd.DataFrame(columns=["timestamp", "location", "pm25", "latitude", "longitude"])
+            except Exception as e:
+                logger.warning(f"Error loading from Lakehouse: {e}. Falling back to CSV.")
+                use_lakehouse = False
+    
+    # Fallback to CSV
     if file_path is None:
         file_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
     else:
@@ -257,19 +287,65 @@ def load_existing_air_quality_data(file_path=None):
         return pd.DataFrame(columns=["timestamp", "location", "pm25", "latitude", "longitude"])
 
 
-def append_air_quality_data(new_df, file_path=None, overwrite=False):
+def append_air_quality_data(new_df, file_path=None, overwrite=False, use_lakehouse=False):
     """
-    Append new air quality data to existing CSV file or overwrite it.
+    Append new air quality data to existing CSV file or Delta Lake table, or overwrite it.
     
     Args:
         new_df: New DataFrame with air quality measurements
-        file_path: Optional path to CSV file
-        overwrite: If True, replace entire file instead of appending
+        file_path: Optional path to CSV file (ignored if use_lakehouse=True)
+        overwrite: If True, replace entire file/table instead of appending
+        use_lakehouse: If True, save to Delta Lake table; if False, save to CSV
     """
     if new_df.empty:
         logger.warning("No new data to append")
         return
     
+    if use_lakehouse:
+        # Check Lakehouse availability
+        if not check_lakehouse_available():
+            logger.warning("Lakehouse unavailable, falling back to CSV")
+            use_lakehouse = False
+        
+        if use_lakehouse:
+            try:
+                # Add partition columns for better query performance
+                from lakehouse_client import add_partition_columns
+                new_df = add_partition_columns(new_df, timestamp_col="timestamp")
+                
+                if overwrite:
+                    # Overwrite existing table
+                    success = save_to_delta_table(
+                        df=new_df,
+                        table_path=LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH,
+                        mode="overwrite",
+                        partition_by=["year", "month"],
+                        raise_on_error=False,
+                    )
+                    if success:
+                        logger.info(f"Saved {len(new_df)} air quality records to Lakehouse (overwritten)")
+                        return
+                else:
+                    # Append to existing table
+                    success = save_to_delta_table(
+                        df=new_df,
+                        table_path=LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH,
+                        mode="append",
+                        partition_by=["year", "month"],
+                        raise_on_error=False,
+                    )
+                    if success:
+                        logger.info(f"Appended {len(new_df)} new air quality records to Lakehouse")
+                        return
+                
+                # If save failed, fall back to CSV
+                logger.warning("Failed to save to Lakehouse, falling back to CSV")
+                use_lakehouse = False
+            except Exception as e:
+                logger.warning(f"Error saving to Lakehouse: {e}, falling back to CSV")
+                use_lakehouse = False
+    
+    # Fallback to CSV
     if file_path is None:
         file_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
     else:
@@ -283,7 +359,7 @@ def append_air_quality_data(new_df, file_path=None, overwrite=False):
         logger.info(f"Saved {len(new_df)} air quality records (overwritten existing data)")
     else:
         # Load existing data and append
-        existing_df = load_existing_air_quality_data(file_path)
+        existing_df = load_existing_air_quality_data(file_path, use_lakehouse=False)
         
         if existing_df.empty:
             # No existing data, just save the new data
@@ -299,24 +375,26 @@ def append_air_quality_data(new_df, file_path=None, overwrite=False):
             logger.info(f"Appended {len(new_df)} new records. Total: {len(combined_df)} records")
 
 
-def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
+def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False, use_lakehouse=False):
     """
-    Collect air quality data once from the API, Kafka, or load from raw JSON dataset.
+    Collect air quality data once from the API, Kafka, Lakehouse, or load from raw JSON dataset.
     
     Args:
-        use_api: If True, fetch from OpenAQ API and write to speed view CSV.
-                 If False and use_kafka=False, load from raw JSON dataset file.
+        use_api: If True, fetch from OpenAQ API and write to speed view CSV/Delta.
+                 If False and use_kafka=False and use_lakehouse=False, load from raw JSON dataset file.
         dataset_file: Optional path to raw JSON dataset file (default: AIR_RAW_FILE_PATH)
-                     Ignored if use_kafka=True.
-        use_kafka: If True, read from Kafka topic; if False, use API or JSON file.
+                     Ignored if use_kafka=True or use_lakehouse=True.
+        use_kafka: If True, read from Kafka topic; if False, use API, Lakehouse, or JSON file.
+        use_lakehouse: If True, read from/write to Lakehouse; if False, use CSV/JSON files.
     
     Returns:
         pandas.DataFrame: Air quality measurements
     
     Raises:
-        FileNotFoundError: If dataset file doesn't exist when use_api=False and use_kafka=False
+        FileNotFoundError: If dataset file doesn't exist when use_api=False, use_kafka=False, and use_lakehouse=False
         ConnectionError: If Kafka is unavailable when use_kafka=True
-        ValueError: If dataset file is empty when use_api=False and use_kafka=False
+        ConnectionError: If Lakehouse is unavailable when use_lakehouse=True
+        ValueError: If dataset file is empty when use_api=False, use_kafka=False, and use_lakehouse=False
     """
     if use_kafka:
         # Check Kafka connection before proceeding
@@ -354,17 +432,69 @@ def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
                 logger.warning("No valid measurements found in Kafka topic")
                 return df
             
-            # Write to speed view CSV
+            # Write to speed view CSV or Delta Lake
             target_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
-            append_air_quality_data(df, file_path=target_path, overwrite=True)
+            append_air_quality_data(df, file_path=target_path, overwrite=True, use_lakehouse=use_lakehouse)
             logger.info(
-                f"Processed {len(df)} air quality records from Kafka to {target_path}"
+                f"Processed {len(df)} air quality records from Kafka to {'Lakehouse' if use_lakehouse else target_path}"
             )
             
             return df
             
         except Exception as e:
             error_msg = f"Error reading from Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}': {e}"
+            logger.error(error_msg)
+            raise
+    elif use_lakehouse:
+        # Check Lakehouse connection before proceeding
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+        
+        logger.info(f"Loading air quality data from Lakehouse: {LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH}")
+        
+        try:
+            # Try to read from speed view first
+            df = load_from_delta_table(LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH, raise_on_error=False)
+            if df is not None and not df.empty:
+                logger.info(f"Loaded {len(df)} air quality records from Lakehouse speed view")
+                return df
+            else:
+                # If speed view doesn't exist, try to read raw data
+                from config import LAKEHOUSE_AIR_QUALITY_RAW_PATH
+                logger.info("Speed view not found, reading raw air quality data from Lakehouse...")
+                df = load_from_delta_table(LAKEHOUSE_AIR_QUALITY_RAW_PATH, raise_on_error=False)
+                if df is None or df.empty:
+                    error_msg = (
+                        f"Error: No data found in Lakehouse. "
+                        f"Please populate it first with: python main.py dataset --use-api air --use-lakehouse"
+                    )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                # Raw data from Lakehouse is already a DataFrame with timestamp, location, pm25, etc.
+                # Ensure timestamp column exists
+                if 'timestamp' not in df.columns:
+                    error_msg = "Raw air quality data from Lakehouse missing 'timestamp' column"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                
+                # Parse timestamp if needed
+                df = parse_timestamp(df, "timestamp")
+                
+                if df.empty:
+                    logger.warning("No valid measurements found in Lakehouse")
+                    return df
+                
+                # Write to speed view
+                append_air_quality_data(df, overwrite=True, use_lakehouse=True)
+                logger.info(f"Processed {len(df)} air quality records from Lakehouse raw data")
+                return df
+        except Exception as e:
+            error_msg = f"Error reading from Lakehouse: {e}"
             logger.error(error_msg)
             raise
     elif use_api:
@@ -375,8 +505,8 @@ def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
             df = parse_measurements(measurements)
             
             if not df.empty:
-                # Write to speed view CSV (DO NOT write to raw JSON)
-                append_air_quality_data(df, overwrite=True)
+                # Write to speed view CSV or Delta Lake (DO NOT write to raw JSON)
+                append_air_quality_data(df, overwrite=True, use_lakehouse=use_lakehouse)
                 logger.info(f"Successfully collected {len(df)} new air quality measurements")
             else:
                 logger.warning("No air quality data collected from API")
@@ -420,11 +550,11 @@ def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
                 logger.warning("No valid measurements found in dataset file")
                 return df
             
-            # Write to speed view CSV
+            # Write to speed view CSV or Delta Lake
             target_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
-            append_air_quality_data(df, file_path=target_path, overwrite=True)
+            append_air_quality_data(df, file_path=target_path, overwrite=True, use_lakehouse=use_lakehouse)
             logger.info(
-                f"Processed {len(df)} air quality records from dataset to {target_path}"
+                f"Processed {len(df)} air quality records from dataset to {'Lakehouse' if use_lakehouse else target_path}"
             )
             
             return df
@@ -441,17 +571,18 @@ def collect_air_quality_once(use_api=True, dataset_file=None, use_kafka=False):
             raise ValueError(error_msg) from e
 
 
-def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, max_iterations=None, use_api=True, use_kafka=False):
+def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, max_iterations=None, use_api=True, use_kafka=False, use_lakehouse=False):
     """
-    Continuously poll air quality API or Kafka at specified intervals.
+    Continuously poll air quality API, Kafka, or Lakehouse at specified intervals.
     
     Args:
         interval_minutes: Polling interval in minutes
         max_iterations: Maximum number of iterations (None = infinite)
-        use_api: If True, fetch from OpenAQ API; if False and use_kafka=False, load from JSON file
-        use_kafka: If True, read from Kafka topic; if False, use API or JSON file
+        use_api: If True, fetch from OpenAQ API; if False and use_kafka=False and use_lakehouse=False, load from JSON file
+        use_kafka: If True, read from Kafka topic; if False, use API, Lakehouse, or JSON file
+        use_lakehouse: If True, read from/write to Lakehouse; if False, use CSV/JSON files
     """
-    logger.info(f"Starting continuous air quality collection (interval: {interval_minutes} minutes, use_api={use_api}, use_kafka={use_kafka})")
+    logger.info(f"Starting continuous air quality collection (interval: {interval_minutes} minutes, use_api={use_api}, use_kafka={use_kafka}, use_lakehouse={use_lakehouse})")
     
     iteration = 0
     
@@ -465,7 +596,7 @@ def collect_air_quality_continuous(interval_minutes=POLLING_INTERVAL_MINUTES, ma
             logger.info(f"Iteration {iteration}: Collecting air quality data...")
             
             try:
-                collect_air_quality_once(use_api=use_api, use_kafka=use_kafka)
+                collect_air_quality_once(use_api=use_api, use_kafka=use_kafka, use_lakehouse=use_lakehouse)
             except Exception as e:
                 logger.error(f"Error in iteration {iteration}: {e}")
                 # Continue to next iteration even if this one failed

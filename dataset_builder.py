@@ -27,9 +27,11 @@ from config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_TRAFFIC_TOPIC,
     KAFKA_AIR_QUALITY_TOPIC,
+    LAKEHOUSE_TRAFFIC_RAW_PATH,
+    LAKEHOUSE_AIR_QUALITY_RAW_PATH,
 )
 from openaq_client import fetch_pm25_measurements
-from utils.data_loader import load_json, save_json
+from utils.data_loader import load_json, save_json, check_lakehouse_available
 from kafka_client import (
     check_kafka_connection,
     write_traffic_to_kafka,
@@ -182,13 +184,14 @@ def _append_traffic_with_rolling_window(
 # Traffic dataset helpers
 
 
-def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH, use_kafka: bool = False):
+def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH, use_kafka: bool = False, use_lakehouse: bool = False):
     """
-    Fetch a single snapshot of traffic data and save to JSON file or Kafka.
+    Fetch a single snapshot of traffic data and save to JSON file, Kafka, or Lakehouse.
     
     Args:
-        output_file: Path to JSON file (used if use_kafka=False)
-        use_kafka: If True, write to Kafka; if False, write to JSON file
+        output_file: Path to JSON file (used if use_kafka=False and use_lakehouse=False)
+        use_kafka: If True, write to Kafka; if False, write to JSON file or Lakehouse
+        use_lakehouse: If True, write to Lakehouse; if False, write to JSON file or Kafka
     """
     logger.info("Starting traffic snapshot collection (TomTom API)...")
     
@@ -198,6 +201,16 @@ def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH, use_kafka:
             error_msg = (
                 f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
                 "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    
+    if use_lakehouse:
+        # Check Lakehouse connection before proceeding
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
             )
             logger.error(error_msg)
             raise ConnectionError(error_msg)
@@ -215,6 +228,33 @@ def build_traffic_snapshot(output_file: Path = TRAFFIC_RAW_FILE_PATH, use_kafka:
             raise_on_error=True,
         )
         logger.info("Traffic snapshot written to Kafka topic '%s' (%s responses)", KAFKA_TRAFFIC_TOPIC, len(raw_responses))
+    elif use_lakehouse:
+        # Convert raw responses to DataFrame and write to Delta Lake
+        try:
+            import pandas as pd
+            from batch_layer.batch_processor import parse_traffic_json
+            from lakehouse_client import write_to_delta_table, add_partition_columns
+            
+            # Parse to DataFrame
+            df = parse_traffic_json(raw_responses)
+            if not df.empty:
+                # Add partition columns
+                df = add_partition_columns(df, timestamp_col="timestamp")
+                
+                # Write to Delta Lake
+                write_to_delta_table(
+                    df=df,
+                    table_path=LAKEHOUSE_TRAFFIC_RAW_PATH,
+                    mode="append",
+                    partition_by=["year", "month", "day"],
+                    raise_on_error=True,
+                )
+                logger.info("Traffic snapshot written to Lakehouse '%s' (%s responses)", LAKEHOUSE_TRAFFIC_RAW_PATH, len(raw_responses))
+            else:
+                logger.warning("No valid traffic data to write to Lakehouse")
+        except Exception as e:
+            logger.error(f"Failed to write traffic data to Lakehouse: {e}")
+            raise
     else:
         save_json(raw_responses, output_file)
         logger.info("Traffic snapshot saved to %s (%s responses)", output_file, len(raw_responses))
@@ -300,22 +340,34 @@ def _fetch_air_quality_last_24h(hours: int = 24):
         return []
 
 
-def load_traffic_from_json_to_kafka(json_file: Path = TRAFFIC_RAW_FILE_PATH):
+def load_traffic_from_json_to_kafka(json_file: Path = TRAFFIC_RAW_FILE_PATH, use_lakehouse: bool = False):
     """
-    Load traffic data from JSON file and write to Kafka topic.
+    Load traffic data from JSON file and write to Kafka topic or Lakehouse.
     
     Args:
         json_file: Path to JSON file containing traffic data
+        use_lakehouse: If True, write to Lakehouse; if False, write to Kafka
     """
-    logger.info(f"Loading traffic data from {json_file} and writing to Kafka...")
-    
-    if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
-        error_msg = (
-            f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
-            "Start Kafka with: docker-compose up -d"
-        )
-        logger.error(error_msg)
-        raise ConnectionError(error_msg)
+    if use_lakehouse:
+        logger.info(f"Loading traffic data from {json_file} and writing to Lakehouse...")
+        
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    else:
+        logger.info(f"Loading traffic data from {json_file} and writing to Kafka...")
+        
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
     
     if not json_file.exists():
         error_msg = f"JSON file not found: {json_file}"
@@ -328,36 +380,70 @@ def load_traffic_from_json_to_kafka(json_file: Path = TRAFFIC_RAW_FILE_PATH):
             logger.warning(f"No data found in {json_file}")
             return
         
-        write_traffic_to_kafka(
-            raw_responses,
-            KAFKA_BOOTSTRAP_SERVERS,
-            KAFKA_TRAFFIC_TOPIC,
-            raise_on_error=True,
-        )
-        logger.info(
-            f"Loaded {len(raw_responses)} traffic records from JSON and wrote to Kafka topic '{KAFKA_TRAFFIC_TOPIC}'"
-        )
+        if use_lakehouse:
+            # Convert to DataFrame and write to Delta Lake
+            import pandas as pd
+            from batch_layer.batch_processor import parse_traffic_json
+            from lakehouse_client import write_to_delta_table, add_partition_columns
+            
+            df = parse_traffic_json(raw_responses)
+            if not df.empty:
+                df = add_partition_columns(df, timestamp_col="timestamp")
+                write_to_delta_table(
+                    df=df,
+                    table_path=LAKEHOUSE_TRAFFIC_RAW_PATH,
+                    mode="append",
+                    partition_by=["year", "month", "day"],
+                    raise_on_error=True,
+                )
+                logger.info(
+                    f"Loaded {len(raw_responses)} traffic records from JSON and wrote to Lakehouse '{LAKEHOUSE_TRAFFIC_RAW_PATH}'"
+                )
+            else:
+                logger.warning("No valid traffic data to write to Lakehouse")
+        else:
+            write_traffic_to_kafka(
+                raw_responses,
+                KAFKA_BOOTSTRAP_SERVERS,
+                KAFKA_TRAFFIC_TOPIC,
+                raise_on_error=True,
+            )
+            logger.info(
+                f"Loaded {len(raw_responses)} traffic records from JSON and wrote to Kafka topic '{KAFKA_TRAFFIC_TOPIC}'"
+            )
     except Exception as e:
-        logger.error(f"Failed to load traffic data from JSON to Kafka: {e}")
+        logger.error(f"Failed to load traffic data from JSON: {e}")
         raise
 
 
-def load_air_from_json_to_kafka(json_file: Path = AIR_RAW_FILE_PATH):
+def load_air_from_json_to_kafka(json_file: Path = AIR_RAW_FILE_PATH, use_lakehouse: bool = False):
     """
-    Load air quality data from JSON file and write to Kafka topic.
+    Load air quality data from JSON file and write to Kafka topic or Lakehouse.
     
     Args:
         json_file: Path to JSON file containing air quality data
+        use_lakehouse: If True, write to Lakehouse; if False, write to Kafka
     """
-    logger.info(f"Loading air quality data from {json_file} and writing to Kafka...")
-    
-    if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
-        error_msg = (
-            f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
-            "Start Kafka with: docker-compose up -d"
-        )
-        logger.error(error_msg)
-        raise ConnectionError(error_msg)
+    if use_lakehouse:
+        logger.info(f"Loading air quality data from {json_file} and writing to Lakehouse...")
+        
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    else:
+        logger.info(f"Loading air quality data from {json_file} and writing to Kafka...")
+        
+        if not check_kafka_connection(KAFKA_BOOTSTRAP_SERVERS):
+            error_msg = (
+                f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
+                "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
     
     if not json_file.exists():
         error_msg = f"JSON file not found: {json_file}"
@@ -370,28 +456,51 @@ def load_air_from_json_to_kafka(json_file: Path = AIR_RAW_FILE_PATH):
             logger.warning(f"No data found in {json_file}")
             return
         
-        write_air_quality_to_kafka(
-            measurements,
-            KAFKA_BOOTSTRAP_SERVERS,
-            KAFKA_AIR_QUALITY_TOPIC,
-            raise_on_error=True,
-        )
-        logger.info(
-            f"Loaded {len(measurements)} air quality records from JSON and wrote to Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}'"
-        )
+        if use_lakehouse:
+            # Convert to DataFrame and write to Delta Lake
+            import pandas as pd
+            from speed_layer.speed_processor import parse_measurements
+            from lakehouse_client import write_to_delta_table, add_partition_columns
+            
+            df = parse_measurements(measurements)
+            if not df.empty:
+                df = add_partition_columns(df, timestamp_col="timestamp")
+                write_to_delta_table(
+                    df=df,
+                    table_path=LAKEHOUSE_AIR_QUALITY_RAW_PATH,
+                    mode="append",
+                    partition_by=["year", "month", "day"],
+                    raise_on_error=True,
+                )
+                logger.info(
+                    f"Loaded {len(measurements)} air quality records from JSON and wrote to Lakehouse '{LAKEHOUSE_AIR_QUALITY_RAW_PATH}'"
+                )
+            else:
+                logger.warning("No valid air quality data to write to Lakehouse")
+        else:
+            write_air_quality_to_kafka(
+                measurements,
+                KAFKA_BOOTSTRAP_SERVERS,
+                KAFKA_AIR_QUALITY_TOPIC,
+                raise_on_error=True,
+            )
+            logger.info(
+                f"Loaded {len(measurements)} air quality records from JSON and wrote to Kafka topic '{KAFKA_AIR_QUALITY_TOPIC}'"
+            )
     except Exception as e:
-        logger.error(f"Failed to load air quality data from JSON to Kafka: {e}")
+        logger.error(f"Failed to load air quality data from JSON: {e}")
         raise
 
 
-def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24, use_kafka: bool = False):
+def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24, use_kafka: bool = False, use_lakehouse: bool = False):
     """
-    Fetch last `hours` of air quality measurements and save as raw JSON or write to Kafka.
+    Fetch last `hours` of air quality measurements and save as raw JSON, write to Kafka, or write to Lakehouse.
     
     Args:
-        output_file: Path to JSON file (used if use_kafka=False)
+        output_file: Path to JSON file (used if use_kafka=False and use_lakehouse=False)
         hours: Number of hours of history to fetch
-        use_kafka: If True, write to Kafka; if False, write to JSON file
+        use_kafka: If True, write to Kafka; if False, write to JSON file or Lakehouse
+        use_lakehouse: If True, write to Lakehouse; if False, write to JSON file or Kafka
     """
     logger.info("Starting air quality dataset collection (OpenAQ)...")
     
@@ -401,6 +510,16 @@ def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24, us
             error_msg = (
                 f"Kafka unavailable at {KAFKA_BOOTSTRAP_SERVERS}. "
                 "Start Kafka with: docker-compose up -d"
+            )
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
+    
+    if use_lakehouse:
+        # Check Lakehouse connection before proceeding
+        if not check_lakehouse_available():
+            error_msg = (
+                f"Lakehouse unavailable. "
+                "Start MinIO with: docker-compose up -d minio"
             )
             logger.error(error_msg)
             raise ConnectionError(error_msg)
@@ -418,6 +537,33 @@ def build_air_dataset(output_file: Path = AIR_RAW_FILE_PATH, hours: int = 24, us
             raise_on_error=True,
         )
         logger.info("Air quality dataset written to Kafka topic '%s' (%s measurements)", KAFKA_AIR_QUALITY_TOPIC, len(measurements))
+    elif use_lakehouse:
+        # Convert measurements to DataFrame and write to Delta Lake
+        try:
+            import pandas as pd
+            from speed_layer.speed_processor import parse_measurements
+            from lakehouse_client import write_to_delta_table, add_partition_columns
+            
+            # Parse to DataFrame
+            df = parse_measurements(measurements)
+            if not df.empty:
+                # Add partition columns
+                df = add_partition_columns(df, timestamp_col="timestamp")
+                
+                # Write to Delta Lake
+                write_to_delta_table(
+                    df=df,
+                    table_path=LAKEHOUSE_AIR_QUALITY_RAW_PATH,
+                    mode="append",
+                    partition_by=["year", "month", "day"],
+                    raise_on_error=True,
+                )
+                logger.info("Air quality dataset written to Lakehouse '%s' (%s measurements)", LAKEHOUSE_AIR_QUALITY_RAW_PATH, len(measurements))
+            else:
+                logger.warning("No valid air quality data to write to Lakehouse")
+        except Exception as e:
+            logger.error(f"Failed to write air quality data to Lakehouse: {e}")
+            raise
     else:
         # Save measurements directly as JSON array
         save_json(measurements, output_file)

@@ -78,6 +78,21 @@ KAFKA_AIR_QUALITY_TOPIC = os.getenv("KAFKA_AIR_QUALITY_TOPIC", "air-quality-raw"
 KAFKA_BATCH_CONSUMER_GROUP = os.getenv("KAFKA_BATCH_CONSUMER_GROUP", "lambda-batch-consumer")
 KAFKA_SPEED_CONSUMER_GROUP = os.getenv("KAFKA_SPEED_CONSUMER_GROUP", "lambda-speed-consumer")
 
+# MinIO / Lakehouse Configuration
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "lakehouse")
+MINIO_USE_SSL = os.getenv("MINIO_USE_SSL", "false").lower() == "true"
+LAKEHOUSE_BASE_PATH = f"s3a://{MINIO_BUCKET_NAME}/delta/"
+
+# Lakehouse Table Paths
+LAKEHOUSE_TRAFFIC_RAW_PATH = f"{LAKEHOUSE_BASE_PATH}traffic/raw/"
+LAKEHOUSE_AIR_QUALITY_RAW_PATH = f"{LAKEHOUSE_BASE_PATH}air_quality/raw/"
+LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH = f"{LAKEHOUSE_BASE_PATH}traffic/batch_view/"
+LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH = f"{LAKEHOUSE_BASE_PATH}air_quality/speed_view/"
+LAKEHOUSE_SERVING_COMBINED_VIEW_PATH = f"{LAKEHOUSE_BASE_PATH}serving/combined_view/"
+
 # Logging
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

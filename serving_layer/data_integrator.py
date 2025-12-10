@@ -14,24 +14,55 @@ from config import (
     COMBINED_VIEW_FILE,
     CRITICAL_PERIODS_FILE,
     PM25_THRESHOLD,
-    SPEED_THRESHOLD
+    SPEED_THRESHOLD,
+    LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH,
+    LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH,
+    LAKEHOUSE_SERVING_COMBINED_VIEW_PATH,
 )
-from utils.data_loader import load_csv, parse_timestamp, floor_to_hour, save_csv
+from utils.data_loader import (
+    load_csv,
+    parse_timestamp,
+    floor_to_hour,
+    save_csv,
+    check_lakehouse_available,
+    save_to_delta_table,
+    load_from_delta_table,
+)
 from utils.visualizer import create_all_plots
 
 logger = logging.getLogger(__name__)
 
 
-def load_batch_view(file_path=None):
+def load_batch_view(file_path=None, use_lakehouse=False):
     """
-    Load batch view (traffic data).
+    Load batch view (traffic data) from CSV or Delta Lake table.
     
     Args:
-        file_path: Optional path to batch view file
+        file_path: Optional path to batch view file (ignored if use_lakehouse=True)
+        use_lakehouse: If True, load from Delta Lake table; if False, load from CSV
         
     Returns:
         pandas.DataFrame: Batch view data
     """
+    if use_lakehouse:
+        if not check_lakehouse_available():
+            logger.warning("Lakehouse unavailable, falling back to CSV")
+            use_lakehouse = False
+        
+        if use_lakehouse:
+            try:
+                df = load_from_delta_table(LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH, raise_on_error=True)
+                if df is not None and not df.empty:
+                    df = parse_timestamp(df, "timestamp")
+                    logger.info(f"Loaded {len(df)} batch view records from Lakehouse")
+                    return df
+                else:
+                    raise FileNotFoundError(f"Batch view not found in Lakehouse: {LAKEHOUSE_TRAFFIC_BATCH_VIEW_PATH}")
+            except Exception as e:
+                logger.warning(f"Error loading from Lakehouse: {e}, falling back to CSV")
+                use_lakehouse = False
+    
+    # Fallback to CSV
     if file_path is None:
         file_path = BATCH_VIEWS_DIR / TRAFFIC_BATCH_VIEW_FILE
     else:
@@ -48,16 +79,37 @@ def load_batch_view(file_path=None):
     return df
 
 
-def load_speed_view(file_path=None):
+def load_speed_view(file_path=None, use_lakehouse=False):
     """
-    Load speed view (air quality data).
+    Load speed view (air quality data) from CSV or Delta Lake table.
     
     Args:
-        file_path: Optional path to speed view file
+        file_path: Optional path to speed view file (ignored if use_lakehouse=True)
+        use_lakehouse: If True, load from Delta Lake table; if False, load from CSV
         
     Returns:
         pandas.DataFrame: Speed view data
     """
+    if use_lakehouse:
+        if not check_lakehouse_available():
+            logger.warning("Lakehouse unavailable, falling back to CSV")
+            use_lakehouse = False
+        
+        if use_lakehouse:
+            try:
+                df = load_from_delta_table(LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH, raise_on_error=False)
+                if df is not None and not df.empty:
+                    df = parse_timestamp(df, "timestamp")
+                    logger.info(f"Loaded {len(df)} speed view records from Lakehouse")
+                    return df
+                else:
+                    logger.warning(f"Speed view not found in Lakehouse: {LAKEHOUSE_AIR_QUALITY_SPEED_VIEW_PATH}. Returning empty DataFrame.")
+                    return pd.DataFrame(columns=["timestamp", "location", "pm25", "latitude", "longitude"])
+            except Exception as e:
+                logger.warning(f"Error loading from Lakehouse: {e}, falling back to CSV")
+                use_lakehouse = False
+    
+    # Fallback to CSV
     if file_path is None:
         file_path = SPEED_VIEWS_DIR / AIR_QUALITY_SPEED_FILE
     else:
@@ -366,14 +418,15 @@ def generate_summary_statistics(combined_df, critical_df):
     return stats
 
 
-def run_serving_layer(batch_file=None, speed_file=None, create_plots=True):
+def run_serving_layer(batch_file=None, speed_file=None, create_plots=True, use_lakehouse=False):
     """
     Complete serving layer pipeline: merge data, identify critical periods, generate outputs.
     
     Args:
-        batch_file: Optional path to batch view file
-        speed_file: Optional path to speed view file
+        batch_file: Optional path to batch view file (ignored if use_lakehouse=True)
+        speed_file: Optional path to speed view file (ignored if use_lakehouse=True)
         create_plots: Whether to create visualization plots
+        use_lakehouse: If True, read from/write to Lakehouse; if False, use CSV files
         
     Returns:
         tuple: (combined_df, critical_df, stats)
@@ -381,8 +434,8 @@ def run_serving_layer(batch_file=None, speed_file=None, create_plots=True):
     logger.info("Starting serving layer processing...")
     
     # Load data
-    batch_df = load_batch_view(batch_file)
-    speed_df = load_speed_view(speed_file)
+    batch_df = load_batch_view(batch_file, use_lakehouse=use_lakehouse)
+    speed_df = load_speed_view(speed_file, use_lakehouse=use_lakehouse)
     
     # Merge data
     combined_df = merge_batch_and_speed(batch_df, speed_df)
@@ -397,11 +450,34 @@ def run_serving_layer(batch_file=None, speed_file=None, create_plots=True):
     stats = generate_summary_statistics(combined_df, critical_df)
     
     # Save combined view (includes is_critical column)
-    combined_output = SERVING_VIEWS_DIR / COMBINED_VIEW_FILE
-    save_csv(combined_df, combined_output)
-    logger.info(f"Combined view saved to {combined_output}")
+    if use_lakehouse and check_lakehouse_available():
+        try:
+            # Add partition columns for better query performance
+            from lakehouse_client import add_partition_columns
+            combined_df_for_save = add_partition_columns(combined_df, timestamp_col="timestamp")
+            
+            success = save_to_delta_table(
+                df=combined_df_for_save,
+                table_path=LAKEHOUSE_SERVING_COMBINED_VIEW_PATH,
+                mode="overwrite",
+                partition_by=["year", "month"],
+                raise_on_error=False,
+            )
+            if success:
+                logger.info(f"Combined view saved to Lakehouse: {LAKEHOUSE_SERVING_COMBINED_VIEW_PATH}")
+            else:
+                logger.warning("Failed to save to Lakehouse, falling back to CSV")
+                use_lakehouse = False
+        except Exception as e:
+            logger.warning(f"Error saving to Lakehouse: {e}, falling back to CSV")
+            use_lakehouse = False
     
-    # Save critical periods
+    if not use_lakehouse:
+        combined_output = SERVING_VIEWS_DIR / COMBINED_VIEW_FILE
+        save_csv(combined_df, combined_output)
+        logger.info(f"Combined view saved to {combined_output}")
+    
+    # Save critical periods (always to CSV for now, could be extended to Lakehouse)
     if not critical_df.empty:
         critical_output = SERVING_VIEWS_DIR / CRITICAL_PERIODS_FILE
         save_csv(critical_df, critical_output)
