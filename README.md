@@ -1,5 +1,22 @@
 # Lambda Architecture Prototype for HCMC Smart City IoT Data
 
+<div align="center">
+  <img src="docs/smartcity_lambda_hero.png"
+       alt="Lambda Architecture Prototype for HCMC Smart City IoT Data"
+       width="80%" />
+
+  <p>
+    <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.8+" />
+    <img src="https://img.shields.io/badge/Spark-3.5%2B-E25A1C?style=flat&logo=apachespark&logoColor=white" alt="Apache Spark 3.5+" />
+    <img src="https://img.shields.io/badge/Kafka-Streaming%20Pipeline-231F20?style=flat&logo=apachekafka&logoColor=white" alt="Apache Kafka Streaming" />
+    <img src="https://img.shields.io/badge/Lakehouse-MinIO%20%2B%20Delta%20Lake-0E83C8?style=flat" alt="Lakehouse: MinIO + Delta Lake" />
+    <img src="https://img.shields.io/badge/use--case-Smart%20City%20IoT-00C853?style=flat" alt="Smart City IoT Use Case" />
+    <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey?style=flat" alt="Platform" />
+    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat" alt="License MIT" />
+  </p>
+</div>
+
+
 A Python prototype implementing a Lambda Architecture for processing real-time traffic data and real-time air quality measurements in Ho Chi Minh City (HCMC), Vietnam. This project demonstrates how batch and speed layers can be combined to identify critical periods with both high traffic congestion and poor air quality.
 
 ## Project Overview
@@ -9,12 +26,22 @@ This project is part of a Master's course on "New Trends in ICT" and demonstrate
 - **Batch Layer**: Processing historical traffic flow data from HCMC
 - **Speed Layer**: Collecting near real-time air quality (PM2.5) data via OpenAQ API
 - **Serving Layer**: Combining both datasets to identify critical periods where traffic congestion and air pollution coincide
+- **Data Storage**: This POC includes both **Kafka** (for real-time data streaming and temporary storage) and **Lakehouse** (MinIO + Delta Lake for long-term data persistence) as storage solutions
+- **Processing Engine**: **PySpark** (Apache Spark) is used for distributed data processing and Delta Lake operations
+
+## Supported Architectures Overview
 
 <p align="center">
   <img src="docs/architecture_overview.png" alt="Lambda Architecture Overview (JSON pipeline)" width="45%" />
   <img src="docs/architecture_overview_kafka.png" alt="Lambda Architecture Overview (Kafka pipeline)" width="45%" />
 </p>
 <p align="center"><em>Left: JSON-based ingestion. Right: Kafka-extended ingestion.</em></p>
+
+<p align="center">
+  <img src="docs/architecture_overview_lakehouse_1.png" alt="Lakehouse pipeline with no raw data in lakehouse" width="45%" />
+  <img src="docs/architecture_overview_lakehouse_2.png" alt="Lakehouse pipeline with raw data in lakehouse (Bronze)" width="45%" />
+</p>
+<p align="center"><em>Left: No raw data in lakehouse. Right: Raw data in lakehouse.</em></p>
 
 ### Use Case
 
@@ -64,9 +91,30 @@ Project/
 
 - Python 3.8 or higher
 - Package manager: `pip` (standard) or `uv` (recommended for faster installation)
-- Docker and Docker Compose (required for Kafka integration, optional otherwise)
+- Docker and Docker Compose (required for Kafka/Lakehouse integration, optional otherwise)
+- **Windows only**: Hadoop 3.3.6 (included in `hadoop/` directory) - add `hadoop/hadoop-3.3.6/bin` to your system PATH environment variable
 
-### 2. Install Dependencies
+### 2. Start Services (Optional)
+
+If you plan to use Kafka or Lakehouse, start the Docker services:
+
+```bash
+# Start all services (Kafka, Zookeeper, Control Center, MinIO)
+docker-compose up -d
+
+# Or start only specific services
+docker-compose up -d minio  # For Lakehouse only
+docker-compose up -d broker zookeeper  # For Kafka only
+```
+
+**Service URLs:**
+- Kafka: `localhost:9092`
+- Kafka Control Center: http://localhost:9021
+- MinIO S3 API: `localhost:9000`
+- MinIO Console: http://localhost:9001 (default: minioadmin/minioadmin)
+- **Spark UI**: http://localhost:4040 (or 4041 if 4040 is in use) - Available when Spark jobs are running
+
+### 3. Install Dependencies
 
 #### Option A: Using pip (Standard)
 
@@ -161,7 +209,7 @@ This command writes the following raw JSON files (or Kafka topics if `--use-kafk
 
 These files become the default inputs for the batch and speed layers when `--use-api` is **not** provided. The processing steps convert the raw JSON into the CSV views used by the serving layer.
 
-### 4.5 Build Local Datasets using Kafka
+### 4.5 Build Local Datasets using Kafka or Lakehouse
 
 **Option A: Fetch from API and write to Kafka**
 ```bash
@@ -175,6 +223,15 @@ python main.py dataset --use-api both --use-kafka
 python main.py dataset --use-api air --use-kafka --from-file
 python main.py dataset --use-api traffic --use-kafka --from-file
 python main.py dataset --use-api both --use-kafka --from-file
+```
+
+**Option C: Build datasets using Lakehouse**
+```bash
+# Fetch from API and write to Lakehouse
+python main.py dataset --use-api both --use-lakehouse
+
+# Load existing JSON files into Lakehouse
+python main.py dataset --use-api both --use-lakehouse --from-file
 ```
 
 > **Note:** Legacy CSV ingestion has been removed. Always refresh the JSON datasets with `python main.py dataset ...` before running the batch or speed layers in offline mode.
@@ -229,16 +286,33 @@ python main.py full --use-api both --use-kafka
 python main.py full --no-api --use-kafka
 ```
 
+**Using Lakehouse (requires MinIO):**
+
+```bash
+# Start MinIO first
+docker-compose up -d minio
+
+# Write datasets to Lakehouse and process from Lakehouse
+python main.py full --use-api both --use-lakehouse
+
+# Process from Lakehouse (skip dataset creation)
+python main.py full --no-api --use-lakehouse
+
+# Combined: Kafka → Lakehouse pipeline
+python main.py full --use-kafka --use-lakehouse
+```
+
 #### 3. Run Individual Layers
 
-- **Batch layer:** `python main.py batch [--use-api] [--use-kafka] [--traffic-file path/to/traffic_raw.json]`
-- **Speed layer:** `python main.py speed [--use-api] [--use-kafka] [--air-file path/to/air_raw.json] [--continuous --interval 10]`
-- **Serving layer:** `python main.py serving [--no-plots]`
+- **Batch layer:** `python main.py batch [--use-api] [--use-kafka] [--use-lakehouse] [--traffic-file path/to/traffic_raw.json]`
+- **Speed layer:** `python main.py speed [--use-api] [--use-kafka] [--use-lakehouse] [--air-file path/to/air_raw.json] [--continuous --interval 10]`
+- **Serving layer:** `python main.py serving [--use-lakehouse] [--no-plots]`
 
 **Data Source Priority:**
 - Without flags: Reads from JSON files (`data/raw/traffic_raw.json`, `data/raw/air_raw.json`)
 - With `--use-api`: Fetches fresh data from APIs
 - With `--use-kafka`: Reads from Kafka topics (requires Kafka running)
+- With `--use-lakehouse`: Reads from/writes to Delta Lake tables in MinIO (requires MinIO running)
 
 **Kafka Examples:**
 ```bash
@@ -251,6 +325,107 @@ python main.py speed --use-kafka
 # Continuous speed layer from Kafka
 python main.py speed --use-kafka --continuous --interval 5
 ```
+
+#### 4. Lakehouse Integration (MinIO + Delta Lake + PySpark)
+
+The project supports using a Lakehouse architecture for long-term data storage using MinIO (S3-compatible storage) and Delta Lake (ACID transactions, schema evolution). **PySpark** (Apache Spark 3.5.0) is used as the distributed processing engine for Delta Lake operations.
+
+**Spark UI:**
+When Spark jobs are running (e.g., during Lakehouse operations), you can access the Spark UI at:
+- http://localhost:4040 (or http://localhost:4041 if port 4040 is already in use)
+- The UI provides real-time monitoring of Spark jobs, stages, tasks, and executor metrics
+
+**Setup MinIO:**
+
+```bash
+# Start MinIO with Docker Compose (already included in docker-compose.yml)
+docker-compose up -d minio
+
+# Access MinIO Console at http://localhost:9001
+# Default credentials: minioadmin / minioadmin
+```
+
+**Windows Setup (Required for PySpark):**
+
+On Windows, PySpark requires Hadoop to be available in your system PATH. The project includes a pre-configured Hadoop 3.3.6 installation in the `hadoop/` directory, which contains the necessary `winutils.exe`, `hadoop.dll`, and `hdfs.dll` binaries for Windows.
+
+**Hadoop Source:**
+The Hadoop binaries are sourced from the [cdarlint/winutils](https://github.com/cdarlint/winutils/tree/master) repository, which provides pre-compiled Windows binaries for various Hadoop versions.
+
+**Add Hadoop to PATH:**
+1. Add `hadoop/hadoop-3.3.6/bin` to your system PATH environment variable
+2. Alternatively, you can add it temporarily in your current session:
+   ```powershell
+   # PowerShell
+   $env:PATH += ";<insert-your-project-path>\hadoop\hadoop-3.3.6\bin"
+   ```
+
+**Note:** If you see `UnsatisfiedLinkError` related to native IO, ensure that `hadoop/bin` is in your PATH. This resolves the native library loading issues on Windows.
+
+**Lakehouse Examples:**
+
+```bash
+# Build datasets and write to Lakehouse
+python main.py dataset --use-api both --use-lakehouse
+
+# Load existing JSON files into Lakehouse
+python main.py dataset --use-api both --use-lakehouse --from-file
+
+# Batch layer from Lakehouse
+python main.py batch --use-lakehouse
+
+# Speed layer from Lakehouse
+python main.py speed --use-lakehouse
+
+# Full pipeline with Kafka → Lakehouse
+python main.py full --use-kafka --use-lakehouse
+
+# Full pipeline using Lakehouse for all layers
+python main.py full --use-lakehouse
+```
+
+**Data Source Priority:**
+- `--use-lakehouse` has priority over CSV/JSON files
+- Can be combined with `--use-kafka` (Kafka → Lakehouse pipeline)
+- Falls back to CSV/JSON if Lakehouse is unavailable
+
+**Delta Lake Table Structure:**
+- `delta/traffic/raw/` - Raw Traffic Data (partitioned by year/month/day)
+- `delta/air_quality/raw/` - Raw Air Quality Data (partitioned by year/month/day)
+- `delta/traffic/batch_view/` - Batch Layer Views (partitioned by year/month)
+- `delta/air_quality/speed_view/` - Speed Layer Views (partitioned by year/month)
+- `delta/serving/combined_view/` - Serving Layer Views (partitioned by year/month)
+
+**Migration from CSV/JSON to Lakehouse:**
+
+```bash
+# Migrate existing CSV/JSON files to Delta Lake tables
+python scripts/migrate_to_lakehouse.py
+```
+
+This script preserves original files and creates Delta Lake tables in MinIO.
+
+## Quick Usage
+
+For a quick demonstration of the complete pipeline using Kafka and Lakehouse, you can use the provided batch script:
+
+**Windows:**
+```bash
+run_full_pipeline_reallife.bat
+```
+
+This script runs the complete Lambda Architecture pipeline in a real-life scenario:
+1. **Data Ingestion**: Writes traffic and air quality data to Kafka topics
+2. **Batch Layer**: Reads from Kafka, processes historical traffic data, writes batch views to Lakehouse
+3. **Speed Layer**: Reads from Kafka, processes real-time air quality data, writes speed views to Lakehouse
+4. **Serving Layer**: Reads batch and speed views from Lakehouse, combines them, and writes the combined view to Lakehouse
+
+**Prerequisites:**
+- Docker services running: `docker-compose up -d broker zookeeper control-center minio`
+- Hadoop in PATH (Windows only): `hadoop/hadoop-3.3.6/bin` must be in your system PATH
+- API keys configured (if using real data instead of generated data)
+
+The script includes interactive prompts (press ENTER to continue), provides step-by-step console output explaining each stage of the pipeline and includes comments explaining each step.
 
 ### Programmatic Usage
 
@@ -278,14 +453,17 @@ After running the pipeline, you'll find the following outputs:
 ### Batch Layer Outputs
 - `data/batch_views/traffic_batch_view.csv`: Hourly aggregated traffic metrics
   - Columns: `timestamp`, `avg_speed`, `min_speed`, `max_speed`, `record_count`, `road_segment_id` (if available)
+- **Lakehouse**: `s3://lakehouse/delta/traffic/batch_view/` (when using `--use-lakehouse`)
 
 ### Speed Layer Outputs
 - `data/speed_views/air_speed_layer_append.csv`: Time-series of PM2.5 measurements
   - Columns: `timestamp`, `location`, `pm25`, `latitude`, `longitude`
+- **Lakehouse**: `s3://lakehouse/delta/air_quality/speed_view/` (when using `--use-lakehouse`)
 
 ### Serving Layer Outputs
 - `data/serving_views/combined_view.csv`: Merged batch + speed data
   - Columns: All batch columns + `avg_pm25`, `pm25_count`, `location_count`, `is_critical`, `severity_index`
+- **Lakehouse**: `s3://lakehouse/delta/serving/combined_view/` (when using `--use-lakehouse`)
 
 - `data/serving_views/critical_periods.csv`: Filtered periods meeting threshold criteria
   - Only records where `avg_pm25 > 50 µg/m³` AND `avg_speed < 20 km/h`
@@ -506,6 +684,17 @@ While the implementation runs on a single machine, the design conceptually maps 
 - Verify Control Center UI is accessible: http://localhost:9021
 - If using custom Kafka servers, set `KAFKA_BOOTSTRAP_SERVERS` environment variable
 
+**6. PySpark/Delta Lake errors on Windows**
+- **`UnsatisfiedLinkError` or `FileNotFoundException: HADOOP_HOME`**: Add `hadoop/hadoop-3.3.6/bin` to your system PATH environment variable
+- **`IOException` during Spark cleanup**: These are harmless warnings on Windows when Spark tries to delete temporary files. They do not affect functionality.
+- **Connection errors to MinIO**: Ensure MinIO is running (`docker-compose ps`) and accessible at `localhost:9000`
+
+**7. Lakehouse write/read errors**
+- Ensure MinIO is running: `docker-compose up -d minio`
+- Check MinIO Console: http://localhost:9001 (default: minioadmin/minioadmin)
+- Verify bucket `lakehouse` exists (created automatically on first write)
+- On Windows, ensure Hadoop is in PATH (see Windows Setup above)
+
 ## Evaluation and Analysis
 
 The project evaluation focuses on:
@@ -586,6 +775,7 @@ This project is created for academic purposes as part of a Master's course assig
 
 - **OpenAQ API**: https://openaq.org/
 - **Lambda Architecture**: Nathan Marz and James Warren, "Big Data: Principles and best practices of scalable real-time data systems"
+- **Hadoop Windows Binaries (winutils)**: https://github.com/cdarlint/winutils/tree/master
 
 ## Contact
 
