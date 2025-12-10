@@ -22,6 +22,7 @@ classifiers = [
 
 dependencies = [
     "pandas>=2.0.0",
+    "pyarrow>=10.0.0",
     "numpy>=1.24.0",
     "requests>=2.31.0",
     "matplotlib>=3.7.0",
@@ -30,6 +31,11 @@ dependencies = [
     "pytz>=2023.3",
     "openaq>=0.4.0",
     "kafka-python>=2.0.2",
+    "pyspark==3.5.0",
+    "delta-spark==3.1.0",
+    "setuptools>=65.0.0",
+    "s3fs>=2023.10.0",
+    "boto3>=1.28.0",
 ]
 
 [project.optional-dependencies]
