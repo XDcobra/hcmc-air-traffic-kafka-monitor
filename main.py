@@ -347,10 +347,35 @@ Examples:
   # Run full pipeline with live APIs
   python main.py full --use-api both
 
+  # Run full pipeline with Kafka (immutable data stream)
+  python main.py full --use-api both --use-kafka
+
+  # Run full pipeline with Lakehouse (Delta Lake on MinIO)
+  python main.py full --use-api both --use-lakehouse
+
+  # Run full pipeline with Kafka and Lakehouse (production-ready)
+  python main.py full --use-api both --use-kafka --use-lakehouse
+
+  # Load data from JSON files to Kafka
+  python main.py dataset --use-api both --use-kafka --from-file
+
+  # Load data from JSON files to Lakehouse
+  python main.py dataset --use-api both --use-lakehouse --from-file
+
 Optional Flags Overview:
   --use-api {traffic,air,both,none}
       Control whether a command pulls fresh data from the APIs or uses dataset CSVs.
       (dataset: default=both, batch/speed/full: default=none -> use data/raw/*.csv)
+
+  --use-kafka
+      Use Kafka topics for reading/writing data instead of JSON/CSV files.
+      Requires Kafka running (docker-compose up -d broker zookeeper).
+      Creates immutable data stream following Lambda Architecture principles.
+
+  --use-lakehouse
+      Use Lakehouse (MinIO + Delta Lake) for reading/writing data instead of CSV/JSON files.
+      Requires MinIO running (docker-compose up -d minio).
+      Provides ACID transactions, time travel, and schema evolution.
 
   dataset command only:
       --current        Fetch a single traffic snapshot (overwrites traffic_data.csv).
@@ -358,13 +383,19 @@ Optional Flags Overview:
       --interval N     Minutes between collector requests (default 30).
       --duration H     Collector runtime in hours (default 24).
       --hours H        Air dataset history to fetch from OpenAQ (default 24h).
+      --from-file      Load data from existing JSON files instead of API
+                      (requires --use-kafka or --use-lakehouse).
+
+  batch/speed/full commands:
+      --use-kafka      Read/write from/to Kafka topics.
+      --use-lakehouse  Read/write from/to Delta Lake tables on MinIO.
 
   speed command:
       --continuous     Keep polling the air API at --interval minutes.
       --max-iterations Limit number of polling loops (default: infinite).
 
-  serving command:
-      --no-plots       Skip generating visualizations.
+  serving/full commands:
+      --no-plots       Skip generating visualization plots.
         """
     )
     
