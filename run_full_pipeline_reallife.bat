@@ -8,7 +8,6 @@ echo ==========================================
 echo.
 
 REM Change to project root directory (where this script is located)
-cd /d "%~dp0\.."
 echo Working directory: %CD%
 echo.
 

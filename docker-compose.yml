@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Zookeeper Service
   zookeeper:
     image: confluentinc/cp-zookeeper:7.9.5
     hostname: zookeeper
@@ -16,6 +17,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # Kafka Broker
   broker:
     image: confluentinc/cp-kafka:7.9.5
     hostname: broker
@@ -43,6 +45,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # confluent control center aka. lakehouse
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.9.5
     hostname: control-center
@@ -60,6 +63,7 @@ services:
       CONFLUENT_METRICS_TOPIC_REPLICATION: 1
       PORT: 9021
 
+  # MinIO - S3 Compatible Storage
   minio:
     image: minio/minio:latest
     hostname: minio
